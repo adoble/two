@@ -123,11 +123,12 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<(Vec<Inline>, ())> {
     // repeat(0.., inline).parse_next(input)
-    let r = repeat_till(0.., inline, eof)
-        .parse_next(input)
-        .map_err(|e| Err(()));
+    let r: ModalResult<(Vec<Inline>, _)> = repeat_till(0.., inline, eof).parse_next(input);
 
-    match r {}
+    match r {
+        Ok(v) => Ok((v.0, ())),
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]
@@ -141,7 +142,7 @@ mod tests {
 
         assert!(r.is_ok());
 
-        let v = r.unwrap();
+        let v = r.unwrap().0;
         assert_eq!(v.len(), 3);
 
         let expected: Vec<Inline> = vec![
