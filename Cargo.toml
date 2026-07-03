@@ -8,3 +8,4 @@ anyhow = "1.0.103"
 serde = {version =  "1.0.228", features=["derive"]}
 serde_json = "1.0.150"
 serde_yaml_ng = "0.10.0"
+winnow = "1.0.3"

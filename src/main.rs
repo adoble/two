@@ -1,10 +1,13 @@
-mod tiddler;
-use tiddler::Tiddler;
-
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 
 use anyhow::{Context, Result};
+
+mod tiddler;
+use tiddler::Tiddler;
+
+mod parser;
+use parser::parse_wiki_text;
 
 fn main() {
     println!("TiddlyWiki to Obsidian");
