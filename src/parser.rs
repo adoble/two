@@ -159,4 +159,61 @@ mod tests {
 
         assert_eq!(v, expected);
     }
+
+    #[test]
+    fn test_bold() {
+        let mut text = "Text that has ''bold text'' in it.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 3);
+
+        let expected: Vec<Inline> = vec![
+            Inline::PlainText {
+                text: "Text that has ".to_string(),
+            },
+            Inline::Bold {
+                text: "bold text".to_string(),
+            },
+            Inline::PlainText {
+                text: " in it.".to_string(),
+            },
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_bold_and_italics() {
+        let mut text =
+            "Some text with a mixture of //italicised text// and also ''some bold text'' in it.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 5);
+
+        let expected: Vec<Inline> = vec![
+            Inline::PlainText {
+                text: "Some text with a mixture of ".to_string(),
+            },
+            Inline::Italics {
+                text: "italicised text".to_string(),
+            },
+            Inline::PlainText {
+                text: " and also ".to_string(),
+            },
+            Inline::Bold {
+                text: "some bold text".to_string(),
+            },
+            Inline::PlainText {
+                text: " in it.".to_string(),
+            },
+        ];
+
+        assert_eq!(v, expected);
+    }
 }

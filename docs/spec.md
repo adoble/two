@@ -15,12 +15,12 @@ This should  result in a Vec<Inline> with the following entries:
     Inline::Bold{text: "bold text"}
     Inline::PlainText{text: " in it."}
 
-3) Input: "Some text with a mixture of //italicised text// and also ''some bold text'' in it.  
+3) Input: "Some text with a mixture of //italicised text// and also ''some bold text'' in it".  
 
 This should  result in a Vec<Inline> with the following entries:
     Inline::PlainText{text: "Some text with a mixture of "}
     Inline::Italics{text: "italicised text"}
-    Inline::PlainText{text: "and also "}
+    Inline::PlainText{text: " and also "}
     Inline::Bold{text: "some bold text"}
     Inline::PlainText{text: " in it."} 
 
