@@ -21,6 +21,9 @@ pub enum Inline {
     Strikethrough {
         text: String,
     },
+    Code {
+        text: String,
+    },
     Highlight {
         text: String,
     },
@@ -80,6 +83,30 @@ impl Inline {
 
     pub fn underlined(text: &str) -> Inline {
         Inline::Underlined {
+            text: text.to_string(),
+        }
+    }
+
+    pub fn superscript(text: &str) -> Inline {
+        Inline::Superscript {
+            text: text.to_string(),
+        }
+    }
+
+    pub fn strikethrough(text: &str) -> Inline {
+        Inline::Strikethrough {
+            text: text.to_string(),
+        }
+    }
+
+    pub fn code(text: &str) -> Inline {
+        Inline::Code {
+            text: text.to_string(),
+        }
+    }
+
+    pub fn highlight(text: &str) -> Inline {
+        Inline::Highlight {
             text: text.to_string(),
         }
     }

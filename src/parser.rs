@@ -39,6 +39,54 @@ fn underlined(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+fn superscript(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "^^";
+    let text = (literal(marker), take_until(0.., marker), literal(marker))
+        .parse_next(input)?
+        .1;
+
+    Ok(Inline::Superscript {
+        text: text.to_string(),
+    })
+}
+
+fn strikethrough(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "~~";
+    let text = (literal(marker), take_until(0.., marker), literal(marker))
+        .parse_next(input)?
+        .1;
+
+    Ok(Inline::Strikethrough {
+        text: text.to_string(),
+    })
+}
+
+fn code(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "`";
+    let text = (literal(marker), take_until(0.., marker), literal(marker))
+        .parse_next(input)?
+        .1;
+
+    Ok(Inline::Code {
+        text: text.to_string(),
+    })
+}
+
+fn highlight(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "@@";
+    let text = (literal(marker), take_until(0.., marker), literal(marker))
+        .parse_next(input)?
+        .1;
+
+    Ok(Inline::Highlight {
+        text: text.to_string(),
+    })
+}
+
+fn embedded_backticks() {
+    todo!()
+}
+
 /// Consume plain text up until the next formatting marker, or to EOF.
 fn plain_text(input: &mut &str) -> ModalResult<Inline> {
     let stop = MARKERS.iter().filter_map(|m| input.find(m)).min();
@@ -63,7 +111,17 @@ fn plain_text(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
-    alt((italics, bold, underlined, plain_text)).parse_next(input)
+    alt((
+        italics,
+        bold,
+        underlined,
+        superscript,
+        strikethrough,
+        code,
+        highlight,
+        plain_text,
+    ))
+    .parse_next(input)
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -170,6 +228,81 @@ mod tests {
             Inline::plaintext("This is "),
             Inline::underlined("some underlined text"),
             Inline::plaintext("."),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_superscript() {
+        let mut text = "This contains superscripted text as in y = x^^2^^.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 3);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("This contains superscripted text as in y = x"),
+            Inline::superscript("2"),
+            Inline::plaintext("."),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_strikethrough() {
+        let mut text = "This ~~is correct~~ is wrong.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 3);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("This "),
+            Inline::strikethrough("is correct"),
+            Inline::plaintext(" is wrong."),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_code() {
+        let mut text = "This `variable` is set to 0.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 3);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("This "),
+            Inline::code("variable"),
+            Inline::plaintext(" is set to 0."),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_highlight() {
+        let mut text = "@@Important point@@ should be noted.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 2);
+
+        let expected: Vec<Inline> = vec![
+            Inline::highlight("Important point"),
+            Inline::plaintext(" should be noted."),
         ];
 
         assert_eq!(v, expected);
