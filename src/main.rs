@@ -9,6 +9,8 @@ use tiddler::Tiddler;
 mod parser;
 use parser::parse_wiki_text;
 
+mod abstract_syntax;
+
 fn main() {
     println!("TiddlyWiki to Obsidian");
 

@@ -1,70 +1,14 @@
+/// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    combinator::{alt, eof, fail, repeat, repeat_till},
-    token::{literal, take_until},
+    combinator::{alt, eof, fail, not, repeat, repeat_till},
+    stream::AsChar,
+    token::{literal, take_till, take_until, take_while},
 };
-/// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum Inline {
-    PlainText {
-        text: String,
-    },
-    Italics {
-        text: String,
-    },
-    Bold {
-        text: String,
-    },
-    Underlined {
-        text: String,
-    },
-    Superscript {
-        text: String,
-    },
-    Subscript {
-        text: String,
-    },
-    Strikethrough {
-        text: String,
-    },
-    Highlight {
-        text: String,
-    },
-    BlockQuote {
-        text: String,
-    },
-    CodeBlock {
-        text: String,
-        language: Option<String>,
-    },
-    Heading {
-        text: String,
-        level: usize,
-    },
-    Image {
-        width: usize,
-        height: usize,
-        link: String,
-    },
-    Link {
-        display_text: Option<String>,
-        link: String,
-    },
-    OrderedList {
-        level: usize,
-    },
-    UnorderedList {
-        level: usize,
-    },
-    TableCell {
-        text: String,
-        heading: bool,
-    },
-    Transclusion {
-        link: String,
-    },
-}
+use crate::abstract_syntax::Inline;
+
+const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@"];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -79,27 +23,28 @@ fn bold(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("''"), take_until(0.., "''"), literal("''"))
         .parse_next(input)?
         .1;
+
     Ok(Inline::Bold {
         text: text.to_string(),
     })
 }
 
-/// Consume plain text up until the next "//" or "''" marker, or to EOF.
-fn plain_text(input: &mut &str) -> ModalResult<Inline> {
-    // Find the earliest occurrence of either marker.
-    let ital_pos = input.find("//");
-    let bold_pos = input.find("''");
+fn underlined(input: &mut &str) -> ModalResult<Inline> {
+    let text = (literal("__"), take_until(0.., "__"), literal("__"))
+        .parse_next(input)?
+        .1;
 
-    let stop = match (ital_pos, bold_pos) {
-        (Some(i), Some(b)) => Some(i.min(b)),
-        (Some(i), None) => Some(i),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    };
+    Ok(Inline::Underlined {
+        text: text.to_string(),
+    })
+}
+
+/// Consume plain text up until the next formatting marker, or to EOF.
+fn plain_text(input: &mut &str) -> ModalResult<Inline> {
+    let stop = MARKERS.iter().filter_map(|m| input.find(m)).min();
 
     match stop {
         Some(0) => fail.parse_next(input),
-
         Some(pos) => {
             let (consumed, rest) = input.split_at(pos);
             *input = rest;
@@ -118,7 +63,7 @@ fn plain_text(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
-    alt((italics, bold, plain_text)).parse_next(input)
+    alt((italics, bold, underlined, plain_text)).parse_next(input)
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -146,15 +91,9 @@ mod tests {
         assert_eq!(v.len(), 3);
 
         let expected: Vec<Inline> = vec![
-            Inline::PlainText {
-                text: "This is some text that ".to_string(),
-            },
-            Inline::Italics {
-                text: "has italics".to_string(),
-            },
-            Inline::PlainText {
-                text: " in the middle.".to_string(),
-            },
+            Inline::plaintext("This is some text that "),
+            Inline::italics("has italics"),
+            Inline::plaintext(" in the middle."),
         ];
 
         assert_eq!(v, expected);
@@ -212,6 +151,25 @@ mod tests {
             Inline::PlainText {
                 text: " in it.".to_string(),
             },
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_underlined() {
+        let mut text = "This is __some underlined text__.";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 3);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("This is "),
+            Inline::underlined("some underlined text"),
+            Inline::plaintext("."),
         ];
 
         assert_eq!(v, expected);
