@@ -1,15 +1,15 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    ascii::{line_ending, multispace0},
-    combinator::{alt, delimited, eof, fail, not, repeat, repeat_till},
+    ascii::{alphanumeric0, line_ending, multispace0},
+    combinator::{alt, delimited, eof, fail, not, preceded, repeat, repeat_till, seq},
     stream::AsChar,
     token::{literal, take_till, take_until, take_while},
 };
 
 use crate::abstract_syntax::Inline;
 
-const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@", "<<<"];
+const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```"];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -107,6 +107,27 @@ fn blockquote(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+fn codeblock(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "```";
+
+    // let r = delimited(marker, alphanumeric0, line_ending);
+
+    let language = preceded(marker, alphanumeric0).parse_next(input)?;
+    let code = take_until(0.., marker).parse_next(input)?;
+    // Consume the remaining marker.
+    literal(marker).parse_next(input)?;
+
+    // Remove any leading new lines
+    let code = code.trim_start_matches(['\n', '\r']);
+
+    let language_option = (!language.is_empty()).then(|| language.trim().to_string());
+
+    Ok(Inline::CodeBlock {
+        text: code.to_string(),
+        language: language_option,
+    })
+}
+
 fn embedded_backticks() {
     todo!()
 }
@@ -134,7 +155,7 @@ fn plain_text(input: &mut &str) -> ModalResult<Inline> {
     }
 }
 
-fn inline(input: &mut &str) -> ModalResult<Inline> {
+fn formatting(input: &mut &str) -> ModalResult<Inline> {
     alt((
         italics,
         bold,
@@ -143,10 +164,12 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
         strikethrough,
         code,
         highlight,
-        blockquote,
-        plain_text,
     ))
     .parse_next(input)
+}
+
+fn inline(input: &mut &str) -> ModalResult<Inline> {
+    alt((blockquote, codeblock, formatting, plain_text)).parse_next(input)
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -333,30 +356,6 @@ mod tests {
         assert_eq!(v, expected);
     }
 
-    #[ignore]
-    #[test]
-    fn test_code_block() {
-        let mut text = "The code is:
-        ```rust
-        let x = function();
-        ```";
-        let r = parse_wiki_text(&mut text);
-
-        assert!(r.is_ok());
-
-        let v = r.unwrap();
-        assert_eq!(v.len(), 4);
-
-        let expected: Vec<Inline> = vec![
-            Inline::plaintext("The code is:"),
-            Inline::plaintext("```rust"),
-            Inline::plaintext("let x = function();"),
-            Inline::plaintext("```"),
-        ];
-
-        assert_eq!(v, expected);
-    }
-
     #[test]
     fn test_block_quote_direct() {
         let mut text = "<<< 
@@ -431,6 +430,48 @@ mod tests {
         let expected: Vec<Inline> = vec![
             Inline::plaintext("A word of wisdom:\n"),
             Inline::blockquote("Knowing yourself is the beginning of all wisdom.", ""),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_code_block_direct() {
+        let expected_code = concat!("    let flag = x <= 5;\n", "    println!(\"{}\", flag);\n",);
+
+        let mut text = String::from("```rust\n");
+        text.push_str(expected_code);
+        text.push_str("```");
+
+        let r = codeblock(&mut text.as_str());
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::codeblock(expected_code, "rust"));
+    }
+
+    #[test]
+    fn test_code_block() {
+        let expected_code = "let x = function();\n";
+
+        let mut text = String::from("The code is:\n");
+        text.push_str("```rust\n");
+        text.push_str(expected_code);
+        text.push_str("```\n");
+
+        let r = parse_wiki_text(&mut text.as_str());
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        //assert_eq!(v.len(), 2);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("The code is:\n"),
+            Inline::codeblock(expected_code, "rust"),
+            Inline::plaintext("\n"),
         ];
 
         assert_eq!(v, expected);

@@ -120,4 +120,13 @@ impl Inline {
             citation: citation_option,
         }
     }
+
+    pub fn codeblock(text: &str, language: &str) -> Inline {
+        let language_option = (!language.is_empty()).then(|| language.to_string());
+
+        Inline::CodeBlock {
+            text: text.to_string(),
+            language: language_option,
+        }
+    }
 }
