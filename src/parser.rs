@@ -1,14 +1,15 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    combinator::{alt, eof, fail, not, repeat, repeat_till},
+    ascii::{line_ending, multispace0},
+    combinator::{alt, delimited, eof, fail, not, repeat, repeat_till},
     stream::AsChar,
     token::{literal, take_till, take_until, take_while},
 };
 
 use crate::abstract_syntax::Inline;
 
-const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@"];
+const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@", "<<<"];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -83,6 +84,29 @@ fn highlight(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+fn blockquote(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "<<<";
+
+    let quote = delimited(
+        (multispace0, marker, multispace0),
+        take_until(0.., marker),
+        (multispace0, marker, multispace0),
+    )
+    .parse_next(input)?
+    .trim();
+
+    let citation = take_while(0.., |c| c != '\n' && c != '\r')
+        .parse_next(input)?
+        .trim();
+
+    let citation_option = (!citation.is_empty()).then(|| citation.to_string());
+
+    Ok(Inline::BlockQuote {
+        text: quote.to_string(),
+        citation: citation_option,
+    })
+}
+
 fn embedded_backticks() {
     todo!()
 }
@@ -119,6 +143,7 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
         strikethrough,
         code,
         highlight,
+        blockquote,
         plain_text,
     ))
     .parse_next(input)
@@ -303,6 +328,109 @@ mod tests {
         let expected: Vec<Inline> = vec![
             Inline::highlight("Important point"),
             Inline::plaintext(" should be noted."),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[ignore]
+    #[test]
+    fn test_code_block() {
+        let mut text = "The code is:
+        ```rust
+        let x = function();
+        ```";
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        assert_eq!(v.len(), 4);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("The code is:"),
+            Inline::plaintext("```rust"),
+            Inline::plaintext("let x = function();"),
+            Inline::plaintext("```"),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_block_quote_direct() {
+        let mut text = "<<< 
+        Knowing yourself is the beginning of all wisdom.
+        <<< Aristotle
+        ";
+        let r = blockquote(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+        // assert_eq!(v.len(), 2);
+
+        assert_eq!(
+            inline,
+            Inline::blockquote(
+                "Knowing yourself is the beginning of all wisdom.",
+                "Aristotle"
+            )
+        );
+    }
+
+    #[test]
+    fn test_block_quote() {
+        // let mut text = "A word of wisdom:
+        // <<<
+        // Knowing yourself is the beginning of all wisdom.
+        // <<< Aristotle
+        // ";
+
+        let mut text = concat!(
+            "A word of wisdom:\n",
+            "<<<\n",
+            "Knowing yourself is the beginning of all wisdom.\n",
+            "<<< Aristotle"
+        );
+
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        // assert_eq!(v.len(), 2);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("A word of wisdom:\n"),
+            Inline::blockquote(
+                "Knowing yourself is the beginning of all wisdom.",
+                "Aristotle",
+            ),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_block_quote_without_citation() {
+        let mut text = concat!(
+            "A word of wisdom:\n",
+            "<<<\n",
+            "Knowing yourself is the beginning of all wisdom.\n",
+            "<<< "
+        );
+
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        // assert_eq!(v.len(), 2);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("A word of wisdom:\n"),
+            Inline::blockquote("Knowing yourself is the beginning of all wisdom.", ""),
         ];
 
         assert_eq!(v, expected);

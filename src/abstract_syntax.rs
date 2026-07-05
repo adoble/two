@@ -29,6 +29,7 @@ pub enum Inline {
     },
     BlockQuote {
         text: String,
+        citation: Option<String>,
     },
     CodeBlock {
         text: String,
@@ -108,6 +109,15 @@ impl Inline {
     pub fn highlight(text: &str) -> Inline {
         Inline::Highlight {
             text: text.to_string(),
+        }
+    }
+
+    pub fn blockquote(text: &str, citation: &str) -> Inline {
+        let citation_option = (!citation.is_empty()).then(|| citation.to_string());
+
+        Inline::BlockQuote {
+            text: text.to_string(),
+            citation: citation_option,
         }
     }
 }
