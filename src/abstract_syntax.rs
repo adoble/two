@@ -61,6 +61,44 @@ pub enum Inline {
     Transclusion {
         link: String,
     },
+    Table {
+        rows: Vec<TableRow>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct TableRow {
+    cells: Vec<TableCell>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct TableCell {
+    text: String,
+    vertical_alignment: CellVerticalAlignment,
+    horizontal_alignment: CellHorizontalAlignment,
+    header: bool,
+    merge: CellMerge,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum CellVerticalAlignment {
+    Top,
+    Bottom,
+    Center,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum CellHorizontalAlignment {
+    Left,
+    Right,
+    Center,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum CellMerge {
+    Above,
+    Left,
+    Right,
 }
 
 impl Inline {
@@ -127,6 +165,13 @@ impl Inline {
         Inline::CodeBlock {
             text: text.to_string(),
             language: language_option,
+        }
+    }
+
+    pub fn heading(text: &str, level: usize) -> Inline {
+        Inline::Heading {
+            text: text.to_string(),
+            level,
         }
     }
 }

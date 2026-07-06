@@ -1,15 +1,15 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, line_ending, multispace0},
-    combinator::{alt, delimited, eof, fail, not, preceded, repeat, repeat_till, seq},
+    ascii::{alphanumeric0, line_ending, multispace0, space1},
+    combinator::{alt, delimited, eof, fail, not, opt, preceded, repeat, repeat_till},
     stream::AsChar,
-    token::{literal, take_till, take_until, take_while},
+    token::{literal, one_of, rest, take_till, take_until, take_while},
 };
 
 use crate::abstract_syntax::Inline;
 
-const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```"];
+const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```", "!"];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -128,6 +128,24 @@ fn codeblock(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+fn heading(input: &mut &str) -> ModalResult<Inline> {
+    // 1. Count the number of hashes (1 to 6) to determine the heading level
+    let hashes: Vec<char> = repeat(1..=6, one_of('!')).parse_next(input)?;
+    let level = hashes.len();
+
+    // 2. Consume the required trailing whitespace separating the # and the text
+    let _space = space1.parse_next(input)?;
+
+    // 3. Consume everything else on the line as the heading text
+    // let text = rest.parse_next(input)?.to_string();
+    let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+
+    Ok(Inline::Heading {
+        level,
+        text: text.to_string(),
+    })
+}
+
 fn embedded_backticks() {
     todo!()
 }
@@ -169,7 +187,7 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
-    alt((blockquote, codeblock, formatting, plain_text)).parse_next(input)
+    alt((blockquote, codeblock, heading, formatting, plain_text)).parse_next(input)
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -472,6 +490,76 @@ mod tests {
             Inline::plaintext("The code is:\n"),
             Inline::codeblock(expected_code, "rust"),
             Inline::plaintext("\n"),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_heading_direct() {
+        let mut text = "! Header Level 1";
+
+        let r = heading(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::heading("Header Level 1", 1));
+
+        let mut text = "!!! Header Level 3";
+
+        let r = heading(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::heading("Header Level 3", 3));
+
+        let mut text = "!!!!!! Header Level 6";
+
+        let r = heading(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::heading("Header Level 6", 6));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_heading_direct_boundary_conditions() {
+        let mut text = " Some text!  Really";
+
+        let inline = heading(&mut text).unwrap();
+    }
+
+    #[test]
+    fn test_heading() {
+        let mut text = "!! The End!\nBody text.";
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected: Vec<Inline> = vec![
+            Inline::heading("The End!", 2),
+            Inline::plaintext("\nBody text."),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_heading_with_leading_spaces() {
+        let mut text = "   !! The End!\nBody text.";
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("   "),
+            Inline::heading("The End!", 2),
+            Inline::plaintext("\nBody text."),
         ];
 
         assert_eq!(v, expected);
