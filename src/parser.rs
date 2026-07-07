@@ -1,13 +1,13 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, digit1, line_ending, multispace0, space1},
+    ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1},
     combinator::{
         alt, delimited, eof, fail, not, opt, preceded, repeat, repeat_till, separated,
         separated_pair, seq, todo,
     },
     stream::AsChar,
-    token::{literal, one_of, rest, take_till, take_until, take_while},
+    token::{literal, one_of, rest, take, take_till, take_until, take_while},
 };
 
 use crate::abstract_syntax::{DimensionField, Dimensions, Inline};
@@ -158,8 +158,28 @@ fn heading(input: &mut &str) -> ModalResult<Inline> {
 /// image_source    = { any_char_except("]]") } ;
 /// ```
 fn image(input: &mut &str) -> ModalResult<Inline> {
-    todo(input)
-    // let mut dimensions = (opt(width), opt(height));
+    let img = seq!(
+        "[img",
+        space0,
+        opt(dimensions),
+        space0,
+        "[",
+        opt((take_until(0.., '|'), take(1usize))),
+        (take_until(1.., "]]"), take(2usize))
+    )
+    .parse_next(input)?;
+
+    let width = img.2.clone().map(|d| d.width).flatten();
+    let height = img.2.map(|d| d.height).flatten();
+    let caption = img.5.map(|s| String::from(s.0));
+    let link = String::from(img.6.0);
+
+    Ok(Inline::Image {
+        width,
+        height,
+        caption,
+        link,
+    })
 
     // let img = seq!(
     //     "[img ",
@@ -252,7 +272,10 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
-    alt((blockquote, codeblock, heading, formatting, plain_text)).parse_next(input)
+    alt((
+        blockquote, codeblock, heading, image, formatting, plain_text,
+    ))
+    .parse_next(input)
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -666,11 +689,65 @@ mod tests {
     }
 
     #[test]
-    fn test_image_direct() {
+    fn test_image_direct_simple() {
         let mut text = "[img[my picture.jpg]]";
 
         let inline = image(&mut text).unwrap();
 
-        assert_eq!(inline, Inline::image("my_picture.jpg", "", "", ""));
+        assert_eq!(inline, Inline::image("my picture.jpg", "", "", ""));
+    }
+
+    #[test]
+    fn test_image_direct_with_width_dimension() {
+        let mut text = "[img width=20 [my picture.jpg]]";
+
+        let inline = image(&mut text).unwrap();
+
+        assert_eq!(inline, Inline::image("my picture.jpg", "", "20", ""));
+    }
+
+    #[test]
+    fn test_image_direct_with_height_dimension() {
+        let mut text = "[img height=32   [my picture.jpg]]";
+
+        let inline = image(&mut text).unwrap();
+
+        assert_eq!(inline, Inline::image("my picture.jpg", "", "", "32"));
+    }
+
+    #[test]
+    fn test_image_direct_with_caption() {
+        let mut text = "[img[A Caption|my picture.jpg]]";
+
+        let inline = image(&mut text).unwrap();
+
+        assert_eq!(inline, Inline::image("my picture.jpg", "A Caption", "", ""));
+    }
+
+    #[test]
+    fn test_image_direct_with_caption_and_dimensions() {
+        let mut text = "[img width=32 height=20 [A Caption|my picture.jpg]]";
+
+        let inline = image(&mut text).unwrap();
+
+        assert_eq!(
+            inline,
+            Inline::image("my picture.jpg", "A Caption", "32", "20")
+        );
+    }
+
+    #[test]
+    fn test_image() {
+        let mut text = "This is a picture [img width=32 height=20 [A Caption|my picture.jpg]] that is green coloured.";
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("This is a picture "),
+            Inline::image("my picture.jpg", "A Caption", "32", "20"),
+            Inline::plaintext(" that is green coloured."),
+        ];
+
+        assert_eq!(v, expected);
     }
 }
