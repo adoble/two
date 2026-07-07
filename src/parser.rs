@@ -13,7 +13,7 @@ use winnow::{
 use crate::abstract_syntax::{DimensionField, Dimensions, Inline};
 
 const MARKERS: &[&str] = &[
-    "''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "[img",
+    "''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "[img", "[[", "[ext[",
 ];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
@@ -180,27 +180,40 @@ fn image(input: &mut &str) -> ModalResult<Inline> {
         caption,
         link,
     })
+}
 
-    // let img = seq!(
-    //     "[img ",
-    //     dimensions, //alt((opt(width), opt(height))),
-    //     "[",
-    //     opt(take_until(0.., '|')),
-    //     take_until(0.., "]]")
-    // )
-    // .parse_next(input)?;
+fn link(input: &mut &str) -> ModalResult<Inline> {
+    let link = alt((simple_link, external_link)).parse_next(input)?;
 
-    // let w = img.1.0.map(String::from);
-    // let h = img.1.1.map(String::from);
-    // let caption = img.3.map(String::from);
-    // let link = img.4.to_string();
+    Ok(link)
+}
 
-    // Ok(Inline::Image {
-    //     width: w,
-    //     height: h,
-    //     caption,
-    //     link,
-    // })
+fn simple_link(input: &mut &str) -> ModalResult<Inline> {
+    let link_statement: (&str, Option<(&str, &str)>, (&str, &str)) = seq!(
+        "[[",
+        opt((take_until(0.., '|'), take(1usize))),
+        (take_until(1.., "]]"), take(2usize))
+    )
+    .parse_next(input)?;
+
+    let display_text = link_statement.1.map(|l| String::from(l.0));
+    let link = link_statement.2.0.to_string();
+
+    Ok(Inline::Link { display_text, link })
+}
+
+fn external_link(input: &mut &str) -> ModalResult<Inline> {
+    let link_statement: (&str, Option<(&str, &str)>, (&str, &str)) = seq!(
+        "[ext[",
+        opt((take_until(0.., '|'), take(1usize))),
+        (take_until(1.., "]]"), take(2usize))
+    )
+    .parse_next(input)?;
+
+    let display_text = link_statement.1.map(|l| String::from(l.0));
+    let link = link_statement.2.0.to_string();
+
+    Ok(Inline::Link { display_text, link })
 }
 
 fn dimensions(input: &mut &str) -> ModalResult<Dimensions> {
@@ -273,7 +286,7 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
-        blockquote, codeblock, heading, image, formatting, plain_text,
+        blockquote, codeblock, heading, link, image, formatting, plain_text,
     ))
     .parse_next(input)
 }
@@ -749,5 +762,32 @@ mod tests {
         ];
 
         assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_link_direct() {
+        let mut text = "[[A Link]]";
+
+        let v = link(&mut text).unwrap();
+
+        assert_eq!(v, Inline::link("A Link", ""));
+    }
+
+    #[test]
+    fn test_link_direct_with_caption() {
+        let mut text = "[[This is the display text|A Link]]";
+
+        let v = link(&mut text).unwrap();
+
+        assert_eq!(v, Inline::link("A Link", "This is the display text"));
+    }
+
+    #[test]
+    fn test_external_link_direct() {
+        let mut text = "[ext[An external Link]]";
+
+        let v = link(&mut text).unwrap();
+
+        assert_eq!(v, Inline::link("An external Link", ""));
     }
 }

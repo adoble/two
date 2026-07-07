@@ -190,7 +190,6 @@ impl Inline {
         }
     }
 
-    ///  width or height == "" means they are not present
     pub fn image(link: &str, caption: &str, width: &str, height: &str) -> Inline {
         let caption = (!caption.is_empty()).then(|| caption.to_string());
         let width = (!width.is_empty()).then(|| width.to_string());
@@ -202,5 +201,12 @@ impl Inline {
             caption,
             link: link.to_string(),
         }
+    }
+
+    pub fn link(link: &str, display_text: &str) -> Inline {
+        let display_text = (!display_text.is_empty()).then(|| display_text.to_string());
+        let link = link.to_string();
+
+        Inline::Link { display_text, link }
     }
 }
