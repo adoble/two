@@ -1,15 +1,20 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, line_ending, multispace0, space1},
-    combinator::{alt, delimited, eof, fail, not, opt, preceded, repeat, repeat_till},
+    ascii::{alphanumeric0, digit1, line_ending, multispace0, space1},
+    combinator::{
+        alt, delimited, eof, fail, not, opt, preceded, repeat, repeat_till, separated,
+        separated_pair, seq, todo,
+    },
     stream::AsChar,
     token::{literal, one_of, rest, take_till, take_until, take_while},
 };
 
-use crate::abstract_syntax::Inline;
+use crate::abstract_syntax::{DimensionField, Dimensions, Inline};
 
-const MARKERS: &[&str] = &["''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```", "!"];
+const MARKERS: &[&str] = &[
+    "''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "[img",
+];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -144,6 +149,66 @@ fn heading(input: &mut &str) -> ModalResult<Inline> {
         level,
         text: text.to_string(),
     })
+}
+/// Parses an image
+/// BNF:
+/// ```bnf
+/// image           = "[img" {whitespace} ["width=" ,number] , ["height=" ,number]  {whitespace} ["height="" ,number] [" , [ caption , "|" ] , image_source , "]]" ;
+/// caption         = { any_char_except("|", "]]") } ;
+/// image_source    = { any_char_except("]]") } ;
+/// ```
+fn image(input: &mut &str) -> ModalResult<Inline> {
+    todo(input)
+    // let mut dimensions = (opt(width), opt(height));
+
+    // let img = seq!(
+    //     "[img ",
+    //     dimensions, //alt((opt(width), opt(height))),
+    //     "[",
+    //     opt(take_until(0.., '|')),
+    //     take_until(0.., "]]")
+    // )
+    // .parse_next(input)?;
+
+    // let w = img.1.0.map(String::from);
+    // let h = img.1.1.map(String::from);
+    // let caption = img.3.map(String::from);
+    // let link = img.4.to_string();
+
+    // Ok(Inline::Image {
+    //     width: w,
+    //     height: h,
+    //     caption,
+    //     link,
+    // })
+}
+
+fn dimensions(input: &mut &str) -> ModalResult<Dimensions> {
+    let fields: Vec<DimensionField> =
+        separated(0.., alt((width, height)), space1).parse_next(input)?;
+
+    let mut dims = Dimensions::default();
+
+    for f in fields {
+        match f {
+            DimensionField::Height(h) => dims.height = Some(h),
+            DimensionField::Width(w) => dims.width = Some(w),
+        }
+    }
+
+    Ok(dims)
+}
+
+fn width(input: &mut &str) -> ModalResult<DimensionField> {
+    ("width=", digit1)
+        .map(|f: (&str, &str)| DimensionField::Width(f.1.to_string()))
+        .parse_next(input)
+}
+
+fn height(input: &mut &str) -> ModalResult<DimensionField> {
+    ("height=", digit1)
+        .map(|f: (&str, &str)| DimensionField::Height(f.1.to_string()))
+        .parse_next(input)
 }
 
 fn embedded_backticks() {
@@ -563,5 +628,49 @@ mod tests {
         ];
 
         assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_image_width() {
+        let mut text = "width=32";
+        let w = width(&mut text).unwrap();
+        assert_eq!(w, DimensionField::Width(String::from("32")));
+    }
+
+    #[test]
+    fn test_image_height() {
+        let mut text = "height=20";
+        let w = height(&mut text).unwrap();
+        assert_eq!(w, DimensionField::Height(String::from("20")));
+    }
+
+    #[test]
+    fn test_image_dimensions() {
+        let mut text = "width=32 height=20";
+        let d = dimensions(&mut text).unwrap();
+
+        let expected = Dimensions {
+            width: Some(String::from("32")),
+            height: Some(String::from("20")),
+        };
+
+        assert_eq!(d, expected);
+
+        let mut text = "height=20 width=32";
+        let d = dimensions(&mut text).unwrap();
+        assert_eq!(d, expected);
+
+        let mut text = "height=20     width=32    ";
+        let d = dimensions(&mut text).unwrap();
+        assert_eq!(d, expected);
+    }
+
+    #[test]
+    fn test_image_direct() {
+        let mut text = "[img[my picture.jpg]]";
+
+        let inline = image(&mut text).unwrap();
+
+        assert_eq!(inline, Inline::image("my_picture.jpg", "", "", ""));
     }
 }

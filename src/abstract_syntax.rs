@@ -1,3 +1,5 @@
+use std::os::unix::fs::OpenOptionsExt;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Inline {
     PlainText {
@@ -40,8 +42,9 @@ pub enum Inline {
         level: usize,
     },
     Image {
-        width: usize,
-        height: usize,
+        width: Option<String>,
+        height: Option<String>,
+        caption: Option<String>,
         link: String,
     },
     Link {
@@ -99,6 +102,18 @@ enum CellMerge {
     Above,
     Left,
     Right,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum DimensionField {
+    Width(String),
+    Height(String),
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct Dimensions {
+    pub width: Option<String>,
+    pub height: Option<String>,
 }
 
 impl Inline {
@@ -172,6 +187,20 @@ impl Inline {
         Inline::Heading {
             text: text.to_string(),
             level,
+        }
+    }
+
+    ///  width or height == "" means they are not present
+    pub fn image(link: &str, caption: &str, width: &str, height: &str) -> Inline {
+        let caption = (!caption.is_empty()).then(|| caption.to_string());
+        let width = (!width.is_empty()).then(|| width.to_string());
+        let height = (!height.is_empty()).then(|| height.to_string());
+
+        Inline::Image {
+            width,
+            height,
+            caption,
+            link: link.to_string(),
         }
     }
 }
