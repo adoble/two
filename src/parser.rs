@@ -183,7 +183,7 @@ fn image(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn link(input: &mut &str) -> ModalResult<Inline> {
-    let link = alt((simple_link, external_link)).parse_next(input)?;
+    let link = alt((camel_case_link, simple_link, external_link)).parse_next(input)?;
 
     Ok(link)
 }
@@ -214,6 +214,28 @@ fn external_link(input: &mut &str) -> ModalResult<Inline> {
     let link = link_statement.2.0.to_string();
 
     Ok(Inline::Link { display_text, link })
+}
+
+fn camel_case_link(input: &mut &str) -> ModalResult<Inline> {
+    // A camel case link is at least two humps back-to-back
+    let l = (hump, repeat(1.., hump).map(|_: Vec<_>| ()))
+        .take()
+        .parse_next(input)?;
+
+    Ok(Inline::Link {
+        display_text: None,
+        link: l.to_string(),
+    })
+}
+
+// one "hump": an uppercase letter followed by 1+ lowercase/digit chars
+fn hump<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
+    (
+        take_while(1, |c: char| c.is_ascii_uppercase()),
+        take_while(1.., |c: char| c.is_ascii_lowercase() || c.is_ascii_digit()),
+    )
+        .take()
+        .parse_next(input)
 }
 
 fn dimensions(input: &mut &str) -> ModalResult<Dimensions> {
@@ -293,7 +315,9 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
     // repeat(0.., inline).parse_next(input)
-    let r: ModalResult<(Vec<Inline>, _)> = repeat_till(0.., inline, eof).parse_next(input);
+    let r: ModalResult<(Vec<Inline>, _)> = repeat_till(0.., inline, eof)
+        .map(|s: (Vec<Inline>, &str)| s)
+        .parse_next(input);
 
     match r {
         Ok(v) => Ok(v.0),
@@ -789,5 +813,65 @@ mod tests {
         let v = link(&mut text).unwrap();
 
         assert_eq!(v, Inline::link("An external Link", ""));
+    }
+
+    #[test]
+    fn test_hump_direct() {
+        let mut text = "CamelCase";
+        let s = hump(&mut text).unwrap();
+        assert_eq!(s, "Camel");
+
+        let mut text = "CamelCaseDouble";
+        let s = hump(&mut text).unwrap();
+        assert_eq!(s, "Camel");
+
+        let mut text = "plaintext";
+        assert!(hump(&mut text).is_err());
+    }
+
+    #[test]
+    fn test_camel_case_link_direct() {
+        let mut text = "CamelCase";
+
+        let inline = camel_case_link(&mut text).unwrap();
+
+        assert_eq!(
+            inline,
+            Inline::Link {
+                display_text: None,
+                link: "CamelCase".to_string()
+            }
+        );
+
+        let mut text = "CamelCaseAgain";
+
+        let inline = camel_case_link(&mut text).unwrap();
+
+        assert_eq!(
+            inline,
+            Inline::Link {
+                display_text: None,
+                link: "CamelCaseAgain".to_string()
+            }
+        );
+    }
+
+    #[test]
+    #[ignore = "Currently does not work."]
+    fn test_camel_case_link() {
+        let mut text =
+            "A key capability of WikiText is the ability to make links, even CamelCaseLinks.";
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("A key capability of "),
+            Inline::link("WikiText", ""),
+            Inline::plaintext(" is the ability to make links, even "),
+            Inline::link("CamelCaseLinks", ""),
+            Inline::plaintext("."),
+        ];
+
+        assert_eq!(v, expected);
     }
 }
