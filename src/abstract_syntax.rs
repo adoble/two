@@ -67,6 +67,7 @@ pub enum Inline {
     Table {
         rows: Vec<TableRow>,
     },
+    EndOfText,
 }
 
 #[derive(Debug, PartialEq, Clone)]

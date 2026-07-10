@@ -1,13 +1,13 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1},
+    ascii::{alphanumeric0, digit1, line_ending, multispace0, multispace1, space0, space1},
     combinator::{
         alt, delimited, eof, fail, not, opt, preceded, repeat, repeat_till, separated,
         separated_pair, seq, todo,
     },
     stream::AsChar,
-    token::{literal, one_of, rest, take, take_till, take_until, take_while},
+    token::{any, literal, one_of, rest, take, take_till, take_until, take_while},
 };
 
 use crate::abstract_syntax::{DimensionField, Dimensions, Inline};
@@ -308,22 +308,64 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
-        blockquote, codeblock, heading, link, image, formatting, plain_text,
+        blockquote,
+        codeblock,
+        heading,
+        link,
+        image,
+        formatting,
+        end_of_text, //plain_text,
     ))
     .parse_next(input)
 }
 
-pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    // repeat(0.., inline).parse_next(input)
-    let r: ModalResult<(Vec<Inline>, _)> = repeat_till(0.., inline, eof)
-        .map(|s: (Vec<Inline>, &str)| s)
-        .parse_next(input);
+pub fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
+    eof.parse_next(input)?;
 
-    match r {
-        Ok(v) => Ok(v.0),
-        Err(e) => Err(e),
-    }
+    Ok(Inline::EndOfText)
 }
+
+pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
+    let mut inlines = Vec::<Inline>::new();
+
+    while !input.is_empty() {
+        let v = repeat_till(0.., any, inline)
+            .map(|v: (Vec<char>, Inline)| v)
+            .with_taken()
+            .parse_next(input)?
+            .0;
+
+        let s: String = v.0.into_iter().collect();
+        inlines.push(Inline::PlainText { text: s });
+        let t = v.1;
+
+        // Sometimes a parser produce an empty plain text entry.
+        // Filter these out
+        inlines.retain(|t| {
+            *t != Inline::PlainText {
+                text: String::new(),
+            }
+        });
+
+        // Filter out end_of_lines as not needed
+        if t != Inline::EndOfText {
+            inlines.push(t)
+        };
+    }
+
+    Ok(inlines)
+}
+
+// pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
+//     let r: ModalResult<(Vec<Inline>, _)> = repeat_till(0.., inline, eof)
+//         .map(|s: (Vec<Inline>, &str)| s)
+//         .parse_next(input);
+
+//     match r {
+//         Ok(v) => Ok(v.0),
+//         Err(e) => Err(e),
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -489,7 +531,6 @@ mod tests {
         assert!(r.is_ok());
 
         let v = r.unwrap();
-        assert_eq!(v.len(), 2);
 
         let expected: Vec<Inline> = vec![
             Inline::highlight("Important point"),
@@ -544,7 +585,7 @@ mod tests {
         // assert_eq!(v.len(), 2);
 
         let expected: Vec<Inline> = vec![
-            Inline::plaintext("A word of wisdom:\n"),
+            Inline::plaintext("A word of wisdom:"),
             Inline::blockquote(
                 "Knowing yourself is the beginning of all wisdom.",
                 "Aristotle",
@@ -571,8 +612,42 @@ mod tests {
         // assert_eq!(v.len(), 2);
 
         let expected: Vec<Inline> = vec![
-            Inline::plaintext("A word of wisdom:\n"),
+            Inline::plaintext("A word of wisdom:"),
             Inline::blockquote("Knowing yourself is the beginning of all wisdom.", ""),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_block_quote_multiline() {
+        // let mut text = "A word of wisdom:
+        // <<<
+        // Knowing yourself is the beginning of all wisdom.
+        // <<< Aristotle
+        // ";
+
+        let mut text = concat!(
+            "A word of wisdom:\n",
+            "<<<\n",
+            "The saddest aspect of life right now is that science\n",
+            "gathers knowledge faster than society gathers wisdom.\n",
+            "<<< Isaac Asimov"
+        );
+
+        let r = parse_wiki_text(&mut text);
+
+        assert!(r.is_ok());
+
+        let v = r.unwrap();
+        // assert_eq!(v.len(), 2);
+
+        let expected: Vec<Inline> = vec![
+            Inline::plaintext("A word of wisdom:"),
+            Inline::blockquote(
+                "The saddest aspect of life right now is that science\ngathers knowledge faster than society gathers wisdom.",
+                "Isaac Asimov",
+            ),
         ];
 
         assert_eq!(v, expected);
@@ -873,5 +948,43 @@ mod tests {
         ];
 
         assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_end_of_text() {
+        let mut text = "";
+
+        let inline = end_of_text(&mut text).unwrap();
+
+        assert_eq!(inline, Inline::EndOfText);
+    }
+
+    // #[test]
+    // fn test_plain_text2() {
+    //     let mut text = "Hello World ''bold''";
+    //     let inline = plain_text2(&mut text).unwrap();
+    //     assert_eq!(
+    //         inline,
+    //         Inline::PlainText {
+    //             text: "Hello World ".to_string()
+    //         }
+    //     )
+    // }
+
+    #[test]
+    fn test_parse_wiki_text() {
+        let mut text = "Hello world\n ''bold''";
+
+        let inlines = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::PlainText {
+                text: "Hello world\n ".to_string(),
+            },
+            Inline::Bold {
+                text: "bold".to_string(),
+            },
+        ];
+        assert_eq!(inlines, expected);
     }
 }
