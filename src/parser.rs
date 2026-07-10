@@ -1029,4 +1029,27 @@ mod tests {
 
         assert_eq!(v, expected);
     }
+
+    #[test]
+    fn test_ordered_list() {
+        let mut text = concat!(
+            "The following points:\n",
+            "# The most important\n",
+            "# Not so important\n",
+            "## Why this is not important"
+        );
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("The following points:\n"),
+            Inline::ordered_list("The most important", 1),
+            Inline::plaintext("\n"),
+            Inline::ordered_list("Not so important", 1),
+            Inline::plaintext("\n"),
+            Inline::ordered_list("Why this is not important", 2),
+        ];
+
+        assert_eq!(v, expected);
+    }
 }
