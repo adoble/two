@@ -52,9 +52,11 @@ pub enum Inline {
         link: String,
     },
     OrderedList {
+        text: String,
         level: usize,
     },
     UnorderedList {
+        text: String,
         level: usize,
     },
     TableCell {
@@ -209,5 +211,19 @@ impl Inline {
         let link = link.to_string();
 
         Inline::Link { display_text, link }
+    }
+
+    pub fn ordered_list(text: &str, level: usize) -> Inline {
+        Inline::OrderedList {
+            text: text.to_string(),
+            level,
+        }
+    }
+
+    pub fn unordered_list(text: &str, level: usize) -> Inline {
+        Inline::UnorderedList {
+            text: text.to_string(),
+            level,
+        }
     }
 }

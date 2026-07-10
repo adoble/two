@@ -142,6 +142,41 @@ fn heading(input: &mut &str) -> ModalResult<Inline> {
         text: text.to_string(),
     })
 }
+
+fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
+    // 1. Count the number of asterixs (1 to 6) to determine the list level
+    let hashes: Vec<char> = repeat(1..=6, one_of('*')).parse_next(input)?;
+    let level = hashes.len();
+
+    // 2. Consume the required trailing whitespace separating the * and the text
+    let _space = space1.parse_next(input)?;
+
+    // 3. Consume everything else on the line as the list item text
+    let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+
+    Ok(Inline::UnorderedList {
+        level,
+        text: text.to_string(),
+    })
+}
+
+fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
+    // 1. Count the number of asterixs (1 to 6) to determine the list level
+    let hashes: Vec<char> = repeat(1..=6, one_of('#')).parse_next(input)?;
+    let level = hashes.len();
+
+    // 2. Consume the required trailing whitespace separating the # and the text
+    let _space = space1.parse_next(input)?;
+
+    // 3. Consume everything else on the line as the list item text
+    let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+
+    Ok(Inline::OrderedList {
+        level,
+        text: text.to_string(),
+    })
+}
+
 /// Parses an image
 /// BNF:
 /// ```bnf
@@ -275,11 +310,16 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
     .parse_next(input)
 }
 
+fn list(input: &mut &str) -> ModalResult<Inline> {
+    alt((unordered_list, ordered_list)).parse_next(input)
+}
+
 fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
         blockquote,
         codeblock,
         heading,
+        list,
         link,
         image,
         formatting,
@@ -917,18 +957,6 @@ mod tests {
         assert_eq!(inline, Inline::EndOfText);
     }
 
-    // #[test]
-    // fn test_plain_text2() {
-    //     let mut text = "Hello World ''bold''";
-    //     let inline = plain_text2(&mut text).unwrap();
-    //     assert_eq!(
-    //         inline,
-    //         Inline::PlainText {
-    //             text: "Hello World ".to_string()
-    //         }
-    //     )
-    // }
-
     #[test]
     fn test_parse_wiki_text() {
         let mut text = "Hello world\n ''bold''";
@@ -944,5 +972,61 @@ mod tests {
             },
         ];
         assert_eq!(inlines, expected);
+    }
+
+    #[test]
+    fn test_unordered_list_direct() {
+        let mut text = "* List Level 1";
+
+        let r = unordered_list(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::unordered_list("List Level 1", 1));
+
+        let mut text = "*** List Level 3";
+
+        let r = unordered_list(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::unordered_list("List Level 3", 3));
+
+        let mut text = "****** List Level 6";
+
+        let r = unordered_list(&mut text);
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::unordered_list("List Level 6", 6));
+    }
+
+    #[test]
+    fn test_unordered_list() {
+        let mut text = concat!(
+            "The following points:\n",
+            "* The most important\n",
+            "* Not so important\n",
+            "** Why this is not important"
+        );
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("The following points:\n"),
+            Inline::unordered_list("The most important", 1),
+            Inline::plaintext("\n"),
+            Inline::unordered_list("Not so important", 1),
+            Inline::plaintext("\n"),
+            Inline::unordered_list("Why this is not important", 2),
+        ];
+
+        assert_eq!(v, expected);
     }
 }
