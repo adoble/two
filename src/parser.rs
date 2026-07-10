@@ -1,20 +1,12 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, digit1, line_ending, multispace0, multispace1, space0, space1},
-    combinator::{
-        alt, delimited, eof, fail, not, opt, preceded, repeat, repeat_till, separated,
-        separated_pair, seq, todo,
-    },
-    stream::AsChar,
-    token::{any, literal, one_of, rest, take, take_till, take_until, take_while},
+    ascii::{alphanumeric0, digit1, multispace0, space0, space1},
+    combinator::{alt, delimited, eof, fail, opt, preceded, repeat, repeat_till, separated, seq},
+    token::{any, literal, one_of, take, take_till, take_until, take_while},
 };
 
 use crate::abstract_syntax::{DimensionField, Dimensions, Inline};
-
-const MARKERS: &[&str] = &[
-    "''", "//", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "[img", "[[", "[ext[",
-];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -270,29 +262,6 @@ fn embedded_backticks() {
     todo!()
 }
 
-/// Consume plain text up until the next formatting marker, or to EOF.
-fn plain_text(input: &mut &str) -> ModalResult<Inline> {
-    let stop = MARKERS.iter().filter_map(|m| input.find(m)).min();
-
-    match stop {
-        Some(0) => fail.parse_next(input),
-        Some(pos) => {
-            let (consumed, rest) = input.split_at(pos);
-            *input = rest;
-            Ok(Inline::PlainText {
-                text: consumed.to_string(),
-            })
-        }
-        None => {
-            let consumed = *input;
-            *input = "";
-            Ok(Inline::PlainText {
-                text: consumed.to_string(),
-            })
-        }
-    }
-}
-
 fn formatting(input: &mut &str) -> ModalResult<Inline> {
     alt((
         italics,
@@ -355,17 +324,6 @@ pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
 
     Ok(inlines)
 }
-
-// pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
-//     let r: ModalResult<(Vec<Inline>, _)> = repeat_till(0.., inline, eof)
-//         .map(|s: (Vec<Inline>, &str)| s)
-//         .parse_next(input);
-
-//     match r {
-//         Ok(v) => Ok(v.0),
-//         Err(e) => Err(e),
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -932,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Currently does not work."]
+    // #[ignore = "Currently does not work."]
     fn test_camel_case_link() {
         let mut text =
             "A key capability of WikiText is the ability to make links, even CamelCaseLinks.";
