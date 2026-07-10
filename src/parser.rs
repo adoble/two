@@ -296,6 +296,18 @@ fn height(input: &mut &str) -> ModalResult<DimensionField> {
 fn embedded_backticks() {
     todo!()
 }
+// Only handling simple transclusion
+// TODO
+fn transclusion(input: &mut &str) -> ModalResult<Inline> {
+    let transclusion_statement =
+        seq!("{{", take_until(1.., "}}"), take(2usize)).parse_next(input)?;
+
+    let transclusion = transclusion_statement.1.to_string();
+
+    Ok(Inline::Transclusion {
+        tiddler: transclusion,
+    })
+}
 
 fn formatting(input: &mut &str) -> ModalResult<Inline> {
     alt((
@@ -321,6 +333,7 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
         heading,
         list,
         link,
+        transclusion,
         image,
         formatting,
         end_of_text, //plain_text,
@@ -1048,6 +1061,29 @@ mod tests {
             Inline::ordered_list("Not so important", 1),
             Inline::plaintext("\n"),
             Inline::ordered_list("Why this is not important", 2),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_transclusion() {
+        let mut text = concat!(
+            "! How to do it\n",
+            "{{Instructions}}",
+            "!! What to avoid\n",
+            "{{Avoid}}"
+        );
+
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::heading("How to do it", 1),
+            Inline::plaintext("\n"),
+            Inline::transclusion("Instructions"),
+            Inline::heading("What to avoid", 2),
+            Inline::plaintext("\n"),
+            Inline::transclusion("Avoid"),
         ];
 
         assert_eq!(v, expected);

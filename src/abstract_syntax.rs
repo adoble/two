@@ -59,12 +59,12 @@ pub enum Inline {
         text: String,
         level: usize,
     },
+    Transclusion {
+        tiddler: String,
+    },
     TableCell {
         text: String,
         heading: bool,
-    },
-    Transclusion {
-        link: String,
     },
     Table {
         rows: Vec<TableRow>,
@@ -224,6 +224,12 @@ impl Inline {
         Inline::UnorderedList {
             text: text.to_string(),
             level,
+        }
+    }
+
+    pub fn transclusion(tiddler: &str) -> Inline {
+        Inline::Transclusion {
+            tiddler: tiddler.to_string(),
         }
     }
 }
