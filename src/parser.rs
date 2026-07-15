@@ -252,14 +252,15 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     // the start and end of the contents. A complication is that the leading
     // spaces are consumed by the parser, so use the value returned by it.
 
-    //let start_space = contents.chars().next_back().map_or(false, |c| c == ' ');
-    let end_char = contents.chars().next_back();
-    let start_char = (!leading_spaces.is_empty()).then(|| Some(' ')).flatten(); // contents.chars().next();
+    let start_space = !leading_spaces.is_empty();
+    let end_space = contents.chars().next_back().map_or(false, |c| c == ' ');
+    // let end_char = contents.chars().next_back();
+    // let start_char = (!leading_spaces.is_empty()).then(|| Some(' ')).flatten(); // contents.chars().next();
 
-    let horizontal_alignment = match (start_char, end_char) {
-        (Some(' '), Some(' ')) => CellHorizontalAlignment::Center,
-        (Some(' '), None) => CellHorizontalAlignment::Right,
-        (None, Some(' ')) => CellHorizontalAlignment::Left,
+    let horizontal_alignment = match (start_space, end_space) {
+        (true, true) => CellHorizontalAlignment::Center,
+        (true, false) => CellHorizontalAlignment::Right,
+        (false, true) => CellHorizontalAlignment::Left,
         _ => CellHorizontalAlignment::default(),
     };
     alignment.horizontal = horizontal_alignment;
