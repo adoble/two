@@ -200,7 +200,7 @@ fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
 // * = 1 or more
 //
 
-fn pre_alignment(input: &mut &str) -> ModalResult<CellAlignment> {
+fn vertical_alignment(input: &mut &str) -> ModalResult<CellAlignment> {
     let c = take(1usize).parse_next(input)?;
 
     let mut alignment = CellAlignment {
@@ -208,7 +208,6 @@ fn pre_alignment(input: &mut &str) -> ModalResult<CellAlignment> {
     };
 
     match c {
-        " " => alignment.horizontal = CellHorizontalAlignment::Right,
         "′" => alignment.vertical = CellVerticalAlignment::Top,
         "," => alignment.vertical = CellVerticalAlignment::Bottom,
         _ => fail.parse_next(input)?,
@@ -231,8 +230,8 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    let (alignment, _, header, contents, _) = seq!(
-        opt(pre_alignment),
+    let (alignment, leading_spaces, header, contents, _) = seq!(
+        opt(vertical_alignment),
         space0,
         opt("!"),
         opt(alt((formatting, link, plaintext))),
@@ -247,24 +246,23 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     }
     .to_string();
 
-    // Is there a space at the end of the contents?
-    // This can modify the alignment
-    let end_char = contents.chars().next_back();
+    let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
-    let alignment = match (alignment, end_char) {
-        (Some(alignment), Some(' ')) => {
-            let mut new_alignment = alignment.clone();
-            if new_alignment.horizontal == CellHorizontalAlignment::Right {
-                new_alignment.horizontal = CellHorizontalAlignment::Center;
-                new_alignment
-            } else {
-                alignment
-            }
-        }
-        (Some(alignment), Some(_)) => alignment,
-        (Some(alignment), None) => alignment,
-        (None, __) => CellAlignment::default(),
+    // Handle the horizonal alignment seperately by looking for spaces at
+    // the start and end of the contents. A complication is that the leading
+    // spaces are consumed by the parser, so use the value returned by it.
+
+    //let start_space = contents.chars().next_back().map_or(false, |c| c == ' ');
+    let end_char = contents.chars().next_back();
+    let start_char = (!leading_spaces.is_empty()).then(|| Some(' ')).flatten(); // contents.chars().next();
+
+    let horizontal_alignment = match (start_char, end_char) {
+        (Some(' '), Some(' ')) => CellHorizontalAlignment::Center,
+        (Some(' '), None) => CellHorizontalAlignment::Right,
+        (None, Some(' ')) => CellHorizontalAlignment::Left,
+        _ => CellHorizontalAlignment::default(),
     };
+    alignment.horizontal = horizontal_alignment;
 
     let header = header.map_or(false, |s| s == "!");
 
@@ -1226,17 +1224,13 @@ fn test_table() {
 }
 
 #[test]
-fn test_pre_alignment() {
-    let mut text = " Contents";
-    let v = pre_alignment(&mut text).unwrap();
-    assert_eq!(v.horizontal, CellHorizontalAlignment::Right);
-
-    text = "′Contents";
-    let v = pre_alignment(&mut text).unwrap();
+fn test_vertical_alignment() {
+    let mut text = "′Contents";
+    let v = vertical_alignment(&mut text).unwrap();
     assert_eq!(v.vertical, CellVerticalAlignment::Top);
 
     text = ",Contents";
-    let v = pre_alignment(&mut text).unwrap();
+    let v = vertical_alignment(&mut text).unwrap();
     assert_eq!(v.vertical, CellVerticalAlignment::Bottom);
 }
 
@@ -1338,6 +1332,26 @@ fn test_table_row_with_horizontal_alignment() {
     let mut text = "| aaa | bbb|ccc |\n";
 
     let v = table_row(&mut text).unwrap();
+
+    assert_eq!(
+        v.cells[0].alignment.horizontal,
+        CellHorizontalAlignment::Center,
+        " TableCell.text:{}",
+        v.cells[0].text
+    );
+
+    assert_eq!(
+        v.cells[1].alignment.horizontal,
+        CellHorizontalAlignment::Right,
+        " TableCell.text:{}",
+        v.cells[1].text
+    );
+    assert_eq!(
+        v.cells[2].alignment.horizontal,
+        CellHorizontalAlignment::Left,
+        " TableCell.text:{}",
+        v.cells[2].text
+    );
 
     let center_alignment = CellAlignment {
         horizontal: CellHorizontalAlignment::Center,
