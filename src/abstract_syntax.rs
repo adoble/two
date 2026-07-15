@@ -1,4 +1,4 @@
-use std::os::unix::fs::OpenOptionsExt;
+use std::{default, os::unix::fs::OpenOptionsExt};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Inline {
@@ -62,10 +62,7 @@ pub enum Inline {
     Transclusion {
         tiddler: String,
     },
-    TableCell {
-        text: String,
-        heading: bool,
-    },
+
     Table {
         rows: Vec<TableRow>,
     },
@@ -73,38 +70,47 @@ pub enum Inline {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct TableRow {
-    cells: Vec<TableCell>,
+pub struct TableRow {
+    pub cells: Vec<TableCell>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-struct TableCell {
-    text: String,
-    vertical_alignment: CellVerticalAlignment,
-    horizontal_alignment: CellHorizontalAlignment,
-    header: bool,
-    merge: CellMerge,
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct TableCell {
+    pub text: String,
+    pub alignment: CellAlignment,
+    pub header: bool,
+    pub merge: CellMerge,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-enum CellVerticalAlignment {
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct CellAlignment {
+    pub vertical: CellVerticalAlignment,
+    pub horizontal: CellHorizontalAlignment,
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub enum CellVerticalAlignment {
     Top,
     Bottom,
+    #[default]
     Center,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-enum CellHorizontalAlignment {
+#[derive(Debug, PartialEq, Clone, Default)]
+pub enum CellHorizontalAlignment {
     Left,
     Right,
+    #[default]
     Center,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 enum CellMerge {
     Above,
     Left,
     Right,
+    #[default]
+    None,
 }
 
 #[derive(Debug, PartialEq, Clone)]

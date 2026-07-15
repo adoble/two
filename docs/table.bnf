@@ -1,0 +1,7 @@
+table = {table_row};
+
+table_row = [white-space], "|",  {table-cell} , [white-space] (end-of-line | eof);
+
+table-cell = [alignment] , [white-space] , [contents],  '|';
+
+contents = {alphanumeric | white-space | formatting | link}
