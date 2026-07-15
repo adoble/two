@@ -8,8 +8,8 @@ use winnow::{
         space1, tab,
     },
     combinator::{
-        alt, delimited, dispatch, eof, fail, opt, preceded, repeat, repeat_till, separated, seq,
-        terminated,
+        alt, delimited, dispatch, eof, fail, not, opt, preceded, repeat, repeat_till, separated,
+        seq, terminated,
     },
     stream::AsChar,
     token::{any, literal, one_of, take, take_till, take_until, take_while},
@@ -208,7 +208,7 @@ fn vertical_alignment(input: &mut &str) -> ModalResult<CellAlignment> {
     };
 
     match c {
-        "′" => alignment.vertical = CellVerticalAlignment::Top,
+        "^" => alignment.vertical = CellVerticalAlignment::Top,
         "," => alignment.vertical = CellVerticalAlignment::Bottom,
         _ => fail.parse_next(input)?,
     }
@@ -251,11 +251,8 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     // Handle the horizonal alignment seperately by looking for spaces at
     // the start and end of the contents. A complication is that the leading
     // spaces are consumed by the parser, so use the value returned by it.
-
     let start_space = !leading_spaces.is_empty();
     let end_space = contents.chars().next_back().map_or(false, |c| c == ' ');
-    // let end_char = contents.chars().next_back();
-    // let start_char = (!leading_spaces.is_empty()).then(|| Some(' ')).flatten(); // contents.chars().next();
 
     let horizontal_alignment = match (start_space, end_space) {
         (true, true) => CellHorizontalAlignment::Center,
@@ -278,22 +275,6 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     Ok(table_cell)
 }
 
-// fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-//     let vbar = "|";
-
-//     let contents = delimited("|", take_until(1.., "|"), "|").parse_next(input)?;
-//     //take_till(0.., |c| c == vbar).parse_next(input)?;
-//     // take_until(0.., vbar).parse_next(input)?;
-//     // take(1usize).parse_next(input)?;
-
-//     // let contents = take_until(0.., vbar).parse_next(input)?;
-
-//     Ok(TableCell {
-//         text: contents.to_string(),
-//         ..Default::default()
-//     })
-// }
-
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
     "|".parse_next(input)?;
     let cells = repeat_till(1.., table_cell, alt((line_ending, eof)))
@@ -301,6 +282,18 @@ fn table_row(input: &mut &str) -> ModalResult<TableRow> {
         .parse_next(input)?;
 
     Ok(TableRow { cells })
+}
+
+fn table(input: &mut &str) -> ModalResult<Inline> {
+    //let v = repeat_till(1.., table_row, not(table_row))
+    let v = repeat(1.., table_row)
+        .fold(Vec::new, |mut acc: Vec<_>, item| {
+            acc.push(item);
+            acc
+        })
+        .parse_next(input)?;
+
+    Ok(Inline::Table { rows: v })
 }
 
 /// Parses an image
@@ -1214,180 +1207,295 @@ mod tests {
 
         assert_eq!(v, expected);
     }
-}
 
-#[test]
-#[ignore = "To be done"]
-fn test_table() {
-    let mut text = "This is a table:\n\n|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
+    #[test]
+    fn test_vertical_alignment() {
+        let mut text = r#"^Contents"#;
+        let v = vertical_alignment(&mut text).unwrap();
+        assert_eq!(v.vertical, CellVerticalAlignment::Top);
 
-    assert!(true)
-}
+        text = ",Contents";
+        let v = vertical_alignment(&mut text).unwrap();
+        assert_eq!(v.vertical, CellVerticalAlignment::Bottom);
+    }
 
-#[test]
-fn test_vertical_alignment() {
-    let mut text = "′Contents";
-    let v = vertical_alignment(&mut text).unwrap();
-    assert_eq!(v.vertical, CellVerticalAlignment::Top);
+    #[test]
+    fn test_plain_text() {
+        let mut text = " Contents42 ";
+        let v = plaintext(&mut text).unwrap();
+        assert_eq!(
+            v,
+            Inline::PlainText {
+                text: " Contents42 ".to_string()
+            }
+        );
 
-    text = ",Contents";
-    let v = vertical_alignment(&mut text).unwrap();
-    assert_eq!(v.vertical, CellVerticalAlignment::Bottom);
-}
+        let mut text = " Contents 42 |";
+        let v = plaintext(&mut text).unwrap();
+        assert_eq!(
+            v,
+            Inline::PlainText {
+                text: " Contents 42 ".to_string()
+            }
+        );
+    }
 
-#[test]
-fn test_plain_text() {
-    let mut text = " Contents42 ";
-    let v = plaintext(&mut text).unwrap();
-    assert_eq!(
-        v,
-        Inline::PlainText {
-            text: " Contents42 ".to_string()
-        }
-    );
+    #[test]
+    fn test_table_cell() {
+        let mut text = "aaa|bbb|ccc|";
 
-    let mut text = " Contents 42 |";
-    let v = plaintext(&mut text).unwrap();
-    assert_eq!(
-        v,
-        Inline::PlainText {
-            text: " Contents 42 ".to_string()
-        }
-    );
-}
+        let v = table_cell(&mut text).unwrap();
 
-#[test]
-fn test_table_cell() {
-    let mut text = "aaa|bbb|ccc|";
+        assert_eq!(
+            v,
+            TableCell {
+                text: "aaa".to_string(),
+                ..Default::default()
+            }
+        );
+    }
 
-    let v = table_cell(&mut text).unwrap();
+    #[test]
+    fn test_table_row() {
+        let mut text = "|aaa|bbb|ccc|\n";
 
-    assert_eq!(
-        v,
-        TableCell {
-            text: "aaa".to_string(),
+        let v = table_row(&mut text).unwrap();
+
+        assert_eq!(
+            v,
+            TableRow {
+                cells: vec![
+                    TableCell {
+                        text: "aaa".to_string(),
+                        ..Default::default()
+                    },
+                    TableCell {
+                        text: "bbb".to_string(),
+                        ..Default::default()
+                    },
+                    TableCell {
+                        text: "ccc".to_string(),
+                        ..Default::default()
+                    }
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn test_table_row_with_headers() {
+        let mut text = "|!aaa|!bbb|!ccc|\n";
+
+        let v = table_row(&mut text).unwrap();
+
+        assert_eq!(
+            v,
+            TableRow {
+                cells: vec![
+                    TableCell {
+                        text: "aaa".to_string(),
+                        header: true,
+                        ..Default::default()
+                    },
+                    TableCell {
+                        text: "bbb".to_string(),
+                        header: true,
+                        ..Default::default()
+                    },
+                    TableCell {
+                        text: "ccc".to_string(),
+                        header: true,
+                        ..Default::default()
+                    }
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn test_table_row_with_horizontal_alignment() {
+        let mut text = "| aaa | bbb|ccc |\n";
+
+        let v = table_row(&mut text).unwrap();
+
+        assert_eq!(
+            v.cells[0].alignment.horizontal,
+            CellHorizontalAlignment::Center,
+            " TableCell.text:{}",
+            v.cells[0].text
+        );
+
+        assert_eq!(
+            v.cells[1].alignment.horizontal,
+            CellHorizontalAlignment::Right,
+            " TableCell.text:{}",
+            v.cells[1].text
+        );
+        assert_eq!(
+            v.cells[2].alignment.horizontal,
+            CellHorizontalAlignment::Left,
+            " TableCell.text:{}",
+            v.cells[2].text
+        );
+
+        let center_alignment = CellAlignment {
+            horizontal: CellHorizontalAlignment::Center,
             ..Default::default()
+        };
+        let left_alignment = CellAlignment {
+            horizontal: CellHorizontalAlignment::Left,
+            ..Default::default()
+        };
+        let right_alignment = CellAlignment {
+            horizontal: CellHorizontalAlignment::Right,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            v,
+            TableRow {
+                cells: vec![
+                    TableCell {
+                        text: "aaa".to_string(),
+                        alignment: center_alignment,
+                        ..Default::default()
+                    },
+                    TableCell {
+                        text: "bbb".to_string(),
+                        alignment: right_alignment,
+
+                        ..Default::default()
+                    },
+                    TableCell {
+                        text: "ccc".to_string(),
+                        alignment: left_alignment,
+                        ..Default::default()
+                    }
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn test_table_row_with_spaced_content() {
+        let mut text = "| Centered words | Right aligned words|Left aligned words |\n";
+
+        let v = table_row(&mut text).unwrap();
+
+        assert_eq!(v.cells[0].text, "Centered words");
+        assert_eq!(v.cells[1].text, "Right aligned words");
+        assert_eq!(v.cells[2].text, "Left aligned words");
+
+        assert_eq!(
+            v.cells[0].alignment.horizontal,
+            CellHorizontalAlignment::Center,
+            " TableCell.text:{}",
+            v.cells[0].text
+        );
+
+        assert_eq!(
+            v.cells[1].alignment.horizontal,
+            CellHorizontalAlignment::Right,
+            " TableCell.text:{}",
+            v.cells[1].text
+        );
+        assert_eq!(
+            v.cells[2].alignment.horizontal,
+            CellHorizontalAlignment::Left,
+            " TableCell.text:{}",
+            v.cells[2].text
+        );
+    }
+
+    #[test]
+    fn test_table_row_with_vertical_alignment() {
+        let mut text =
+            "| Centered words |^ Top and right aligned words|,Bottom and left aligned words |\n";
+
+        let v = table_row(&mut text).unwrap();
+
+        assert_eq!(
+            v.cells[0].alignment.vertical,
+            CellVerticalAlignment::Center,
+            " TableCell.text:{}",
+            v.cells[0].text
+        );
+
+        assert_eq!(
+            v.cells[1].alignment.vertical,
+            CellVerticalAlignment::Top,
+            " TableCell.text:{}",
+            v.cells[1].text
+        );
+
+        assert_eq!(
+            v.cells[2].alignment.vertical,
+            CellVerticalAlignment::Bottom,
+            " TableCell.text:{}",
+            v.cells[2].text
+        );
+
+        // Check that the horizontal alignment still works
+        assert_eq!(
+            v.cells[0].alignment.horizontal,
+            CellHorizontalAlignment::Center,
+            " TableCell.text:{}",
+            v.cells[0].text
+        );
+
+        assert_eq!(
+            v.cells[1].alignment.horizontal,
+            CellHorizontalAlignment::Right,
+            " TableCell.text:{}",
+            v.cells[1].text
+        );
+        assert_eq!(
+            v.cells[2].alignment.horizontal,
+            CellHorizontalAlignment::Left,
+            " TableCell.text:{}",
+            v.cells[2].text
+        );
+    }
+
+    #[test]
+    fn test_another_row() {
+        let mut text = "|^top left |^ top center |^ top right|\n";
+
+        let table = table_row(&mut text).unwrap();
+
+        assert!(true);
+    }
+
+    #[test]
+    fn test_table() {
+        let mut text = "|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
+
+        let table = table(&mut text).unwrap();
+
+        if let Inline::Table { rows } = table {
+            assert_eq!(rows.len(), 4);
+
+            let row = &rows[0];
+            let cell = &row.cells[1];
+            assert_eq!(cell.text, "Middle");
+            assert_eq!(cell.header, true);
+            assert_eq!(cell.alignment.horizontal, CellHorizontalAlignment::Center);
+
+            let row = &rows[1];
+            let cell = &row.cells[2];
+            assert_eq!(cell.text, "top right");
+            assert_eq!(cell.header, false);
+            assert_eq!(cell.alignment.horizontal, CellHorizontalAlignment::Right);
+            assert_eq!(cell.alignment.vertical, CellVerticalAlignment::Top);
+
+            let row = &rows[3];
+            let cell = &row.cells[0];
+            assert_eq!(cell.text, "bottom left");
+            assert_eq!(cell.header, false);
+            assert_eq!(cell.alignment.horizontal, CellHorizontalAlignment::Left);
+            assert_eq!(cell.alignment.vertical, CellVerticalAlignment::Bottom);
+        } else {
+            assert!(false, "Result is not Inline:.Table")
         }
-    );
-}
-
-#[test]
-fn test_table_row() {
-    let mut text = "|aaa|bbb|ccc|\n";
-
-    let v = table_row(&mut text).unwrap();
-
-    assert_eq!(
-        v,
-        TableRow {
-            cells: vec![
-                TableCell {
-                    text: "aaa".to_string(),
-                    ..Default::default()
-                },
-                TableCell {
-                    text: "bbb".to_string(),
-                    ..Default::default()
-                },
-                TableCell {
-                    text: "ccc".to_string(),
-                    ..Default::default()
-                }
-            ]
-        }
-    )
-}
-
-#[test]
-fn test_table_row_with_headers() {
-    let mut text = "|!aaa|!bbb|!ccc|\n";
-
-    let v = table_row(&mut text).unwrap();
-
-    assert_eq!(
-        v,
-        TableRow {
-            cells: vec![
-                TableCell {
-                    text: "aaa".to_string(),
-                    header: true,
-                    ..Default::default()
-                },
-                TableCell {
-                    text: "bbb".to_string(),
-                    header: true,
-                    ..Default::default()
-                },
-                TableCell {
-                    text: "ccc".to_string(),
-                    header: true,
-                    ..Default::default()
-                }
-            ]
-        }
-    )
-}
-
-#[test]
-fn test_table_row_with_horizontal_alignment() {
-    let mut text = "| aaa | bbb|ccc |\n";
-
-    let v = table_row(&mut text).unwrap();
-
-    assert_eq!(
-        v.cells[0].alignment.horizontal,
-        CellHorizontalAlignment::Center,
-        " TableCell.text:{}",
-        v.cells[0].text
-    );
-
-    assert_eq!(
-        v.cells[1].alignment.horizontal,
-        CellHorizontalAlignment::Right,
-        " TableCell.text:{}",
-        v.cells[1].text
-    );
-    assert_eq!(
-        v.cells[2].alignment.horizontal,
-        CellHorizontalAlignment::Left,
-        " TableCell.text:{}",
-        v.cells[2].text
-    );
-
-    let center_alignment = CellAlignment {
-        horizontal: CellHorizontalAlignment::Center,
-        ..Default::default()
-    };
-    let left_alignment = CellAlignment {
-        horizontal: CellHorizontalAlignment::Left,
-        ..Default::default()
-    };
-    let right_alignment = CellAlignment {
-        horizontal: CellHorizontalAlignment::Right,
-        ..Default::default()
-    };
-
-    assert_eq!(
-        v,
-        TableRow {
-            cells: vec![
-                TableCell {
-                    text: "aaa".to_string(),
-                    alignment: center_alignment,
-                    ..Default::default()
-                },
-                TableCell {
-                    text: "bbb".to_string(),
-                    alignment: right_alignment,
-
-                    ..Default::default()
-                },
-                TableCell {
-                    text: "ccc".to_string(),
-                    alignment: left_alignment,
-                    ..Default::default()
-                }
-            ]
-        }
-    )
+    }
 }
