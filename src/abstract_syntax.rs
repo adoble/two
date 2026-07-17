@@ -76,7 +76,7 @@ pub struct TableRow {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct TableCell {
-    pub text: String,
+    pub contents: Vec<Inline>,
     pub alignment: CellAlignment,
     pub header: bool,
     pub merge: CellMerge,
@@ -93,7 +93,7 @@ pub enum CellVerticalAlignment {
     Top,
     Bottom,
     #[default]
-    Center,
+    Middle,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -237,5 +237,92 @@ impl Inline {
         Inline::Transclusion {
             tiddler: tiddler.to_string(),
         }
+    }
+}
+
+// pub struct TableCell {
+//     pub inlines: Vec<Inline>,
+//     pub alignment: CellAlignment,
+//     pub header: bool,
+//     pub merge: CellMerge,
+// }
+impl TableCell {
+    /// Helpler function to create a simple table cell
+    pub fn new(text: &str) -> TableCell {
+        TableCell {
+            contents: vec![Inline::plaintext(text)],
+            ..Default::default()
+        }
+    }
+    pub fn header(&mut self) -> &mut TableCell {
+        self.header = true;
+        self
+    }
+
+    pub fn top(&mut self) -> &mut TableCell {
+        self.alignment.vertical = CellVerticalAlignment::Top;
+        self
+    }
+    pub fn middle(&mut self) -> &mut TableCell {
+        self.alignment.vertical = CellVerticalAlignment::Middle;
+        self
+    }
+    pub fn bottom(&mut self) -> &mut TableCell {
+        self.alignment.vertical = CellVerticalAlignment::Bottom;
+        self
+    }
+
+    pub fn left(&mut self) -> &mut TableCell {
+        self.alignment.horizontal = CellHorizontalAlignment::Left;
+        self
+    }
+
+    pub fn center(&mut self) -> &mut TableCell {
+        self.alignment.horizontal = CellHorizontalAlignment::Center;
+        self
+    }
+    pub fn right(&mut self) -> &mut TableCell {
+        self.alignment.horizontal = CellHorizontalAlignment::Right;
+        self
+    }
+
+    pub fn build(&mut self) -> TableCell {
+        self.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_table_cell() {
+        let mut t = TableCell::new("aaa");
+
+        assert_eq!(
+            t,
+            TableCell {
+                contents: vec![Inline::PlainText {
+                    text: String::from("aaa"),
+                }],
+                ..Default::default()
+            }
+        );
+
+        let mut t = TableCell::new("bbb").header().build();
+        assert_eq!(t.header, true);
+        assert_eq!(
+            t,
+            TableCell {
+                contents: vec![Inline::PlainText {
+                    text: String::from("bbb"),
+                }],
+                header: true,
+                ..Default::default()
+            }
+        );
+
+        let t = t.top().build();
+        assert_eq!(t.alignment.vertical, CellVerticalAlignment::Top);
     }
 }
