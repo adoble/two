@@ -1390,85 +1390,51 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any())]
     fn test_table_row_with_spaced_content() {
         let mut text = "| Centered words | Right aligned words|Left aligned words |\n";
 
         let v = table_row(&mut text).unwrap();
 
-        assert_eq!(v.cells[0].text, "Centered words");
-        assert_eq!(v.cells[1].text, "Right aligned words");
-        assert_eq!(v.cells[2].text, "Left aligned words");
-
         assert_eq!(
-            v.cells[0].alignment.horizontal,
-            CellHorizontalAlignment::Center,
-            " TableCell.text:{}",
-            v.cells[0].text
+            v.cells[0],
+            TableCell::new("Centered words").center().build()
         );
 
         assert_eq!(
-            v.cells[1].alignment.horizontal,
-            CellHorizontalAlignment::Right,
-            " TableCell.text:{}",
-            v.cells[1].text
+            v.cells[1],
+            TableCell::new("Right aligned words").right().build()
         );
         assert_eq!(
-            v.cells[2].alignment.horizontal,
-            CellHorizontalAlignment::Left,
-            " TableCell.text:{}",
-            v.cells[2].text
+            v.cells[2],
+            TableCell::new("Left aligned words").left().build()
         );
     }
 
     #[test]
-    #[cfg(any())]
     fn test_table_row_with_vertical_alignment() {
         let mut text =
-            "| Centered words |^ Top and right aligned words|,Bottom and left aligned words |\n";
+            "| Middle words |^ Top and right aligned words|,Bottom and left aligned words |\n";
 
         let v = table_row(&mut text).unwrap();
 
         assert_eq!(
-            v.cells[0].alignment.vertical,
-            CellVerticalAlignment::Center,
-            " TableCell.text:{}",
-            v.cells[0].text
+            v.cells[0],
+            TableCell::new("Middle words").middle().center().build()
+        );
+        assert_eq!(
+            v.cells[1],
+            TableCell::new("Top and right aligned words")
+                .top()
+                .right()
+                .build()
         );
 
         assert_eq!(
-            v.cells[1].alignment.vertical,
-            CellVerticalAlignment::Top,
-            " TableCell.text:{}",
-            v.cells[1].text
-        );
-
-        assert_eq!(
-            v.cells[2].alignment.vertical,
-            CellVerticalAlignment::Bottom,
-            " TableCell.text:{}",
-            v.cells[2].text
-        );
-
-        // Check that the horizontal alignment still works
-        assert_eq!(
-            v.cells[0].alignment.horizontal,
-            CellHorizontalAlignment::Center,
-            " TableCell.text:{}",
-            v.cells[0].text
-        );
-
-        assert_eq!(
-            v.cells[1].alignment.horizontal,
-            CellHorizontalAlignment::Right,
-            " TableCell.text:{}",
-            v.cells[1].text
-        );
-        assert_eq!(
-            v.cells[2].alignment.horizontal,
-            CellHorizontalAlignment::Left,
-            " TableCell.text:{}",
-            v.cells[2].text
+            v.cells[2],
+            TableCell::new("Bottom and left aligned words")
+                .bottom()
+                .left()
+                .build()
         );
     }
 
@@ -1482,8 +1448,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any())]
-    fn test_table() {
+    fn test_table_direct() {
         let mut text = "|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
 
         let table = table(&mut text).unwrap();
@@ -1493,23 +1458,15 @@ mod tests {
 
             let row = &rows[0];
             let cell = &row.cells[1];
-            assert_eq!(cell.text, "Middle");
-            assert_eq!(cell.header, true);
-            assert_eq!(cell.alignment.horizontal, CellHorizontalAlignment::Center);
+            assert_eq!(*cell, TableCell::new("Middle").header().center().build());
 
             let row = &rows[1];
             let cell = &row.cells[2];
-            assert_eq!(cell.text, "top right");
-            assert_eq!(cell.header, false);
-            assert_eq!(cell.alignment.horizontal, CellHorizontalAlignment::Right);
-            assert_eq!(cell.alignment.vertical, CellVerticalAlignment::Top);
+            assert_eq!(*cell, TableCell::new("top right").right().top().build());
 
             let row = &rows[3];
             let cell = &row.cells[0];
-            assert_eq!(cell.text, "bottom left");
-            assert_eq!(cell.header, false);
-            assert_eq!(cell.alignment.horizontal, CellHorizontalAlignment::Left);
-            assert_eq!(cell.alignment.vertical, CellVerticalAlignment::Bottom);
+            assert_eq!(*cell, TableCell::new("bottom left").left().bottom().build());
         } else {
             assert!(false, "Result is not Inline:.Table")
         }
