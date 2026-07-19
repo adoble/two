@@ -1,6 +1,6 @@
-use std::default;
-
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
+use std::assert_matches;
+
 use winnow::{
     ModalResult, Parser,
     ascii::{
@@ -374,12 +374,15 @@ fn link(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn simple_link(input: &mut &str) -> ModalResult<Inline> {
+    println!("DEBUG Entering simple_link with text: {}", input);
     let link_statement: (&str, Option<(&str, &str)>, (&str, &str)) = seq!(
         "[[",
         opt((take_until(0.., '|'), take(1usize))),
         (take_until(1.., "]]"), take(2usize))
     )
     .parse_next(input)?;
+
+    println!("DEBUG Simple Link found: {}", link_statement.2.0);
 
     let display_text = link_statement.1.map(|l| String::from(l.0));
     let link = link_statement.2.0.to_string();
@@ -484,16 +487,22 @@ fn list(input: &mut &str) -> ModalResult<Inline> {
     alt((unordered_list, ordered_list)).parse_next(input)
 }
 
+// Only adding the itermediate parser so that the alt in the inline
+// parser does not become too long
+fn blocks(input: &mut &str) -> ModalResult<Inline> {
+    alt((blockquote, codeblock)).parse_next(input)
+}
+
 fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
-        blockquote,
-        codeblock,
+        blocks,
         heading,
         list,
         link,
         transclusion,
         image,
         formatting,
+        table,
         end_of_text, //plain_text,
     ))
     .parse_next(input)
@@ -506,6 +515,7 @@ pub fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
+    println!("DEBUG: Entering parse_wiki_text");
     let mut inlines = Vec::<Inline>::new();
 
     while !input.is_empty() {
@@ -529,6 +539,7 @@ pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
 
         // Filter out end_of_lines as not needed
         if t != Inline::EndOfText {
+            println!("DEBUG parse_wiki_text pushing inline {:?}", t);
             inlines.push(t)
         };
     }
@@ -538,6 +549,7 @@ pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::{assert_eq, assert_ne};
     use serde_json::ser::CharEscape::Tab;
 
     use super::*;
@@ -1122,6 +1134,23 @@ mod tests {
     }
 
     #[test]
+    fn test_link() {
+        let mut input = "This is some [[link]] in the middle of text followed by [[another link]].";
+
+        let l = parse_wiki_text(&mut input).unwrap();
+
+        let expectations = vec![
+            Inline::plaintext("This is some "),
+            Inline::link("link", ""),
+            Inline::plaintext(" in the middle of text followed by "),
+            Inline::link("another link", ""),
+            Inline::plaintext("."),
+        ];
+
+        assert_eq!(l, expectations);
+    }
+
+    #[test]
     fn test_end_of_text() {
         let mut text = "";
 
@@ -1470,5 +1499,35 @@ mod tests {
         } else {
             assert!(false, "Result is not Inline:.Table")
         }
+    }
+
+    #[test]
+    #[ignore = "Not working yet - TODO Change parse_wiki_text to use plaintext"]
+    fn test_table_in_situ() {
+        let mut text = "This is some text with a [[link]] followed by a table:\n|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
+
+        let inlines = parse_wiki_text(&mut text).unwrap();
+
+        //assert_eq!(inlines.len(), 4);
+        assert_eq!(inlines[0], Inline::plaintext("This is some text with a "));
+        assert_eq!(inlines[1], Inline::link("link", ""));
+        assert_eq!(inlines[2], Inline::plaintext(" followed by a table:\n"));
+
+        assert_matches!(&inlines[4], Inline::Table {rows} if rows.len() == 4);
+        assert_matches!(&inlines[4], Inline::Table {rows} if rows[0].cells[1] == TableCell::new("Middle").header().center().build());
+        assert_matches!(&inlines[4], Inline::Table {rows} if rows[1].cells[2] == TableCell::new("top right").right().top().build());
+        assert_matches!(&inlines[4], Inline::Table {rows} if rows[3].cells[0] == TableCell::new("bottom left").left().bottom().build());
+
+        // let row = &rows[0];
+        // let cell = &row.cells[1];
+        // assert_eq!(*cell, TableCell::new("Middle").header().center().build());
+
+        // let row = &rows[1];
+        // let cell = &row.cells[2];
+        // assert_eq!(*cell, TableCell::new("top right").right().top().build());
+
+        // let row = &rows[3];
+        // let cell = &row.cells[0];
+        // assert_eq!(*cell, TableCell::new("bottom left").left().bottom().build());
     }
 }
