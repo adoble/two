@@ -232,20 +232,20 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
-#[deprecated]
-fn table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    let v = repeat(0.., alt((formatting, link, image, plaintext)))
-        .fold(Vec::new, |mut acc: Vec<_>, item| {
-            acc.push(item);
-            acc
-        })
-        .parse_next(input)?;
+// #[deprecated]
+// fn table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
+//     let v = repeat(0.., alt((formatting, link, image, plaintext)))
+//         .fold(Vec::new, |mut acc: Vec<_>, item| {
+//             acc.push(item);
+//             acc
+//         })
+//         .parse_next(input)?;
 
-    Ok(v)
-}
+//     Ok(v)
+// }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    println!("DEBUG: Entering table_cell parser with: {}", input);
+    // println!("DEBUG: Entering table_cell parser with: {}", input);
 
     let (alignment, leading_spaces, header, mut contents, _) = seq!(
         opt(vertical_alignment),
@@ -257,13 +257,13 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     )
     .parse_next(input)?;
 
-    println!(
-        "DEBUG: alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
-        alignment.clone(),
-        leading_spaces,
-        header,
-        contents
-    );
+    // println!(
+    //     "DEBUG: alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
+    //     alignment.clone(),
+    //     leading_spaces,
+    //     header,
+    //     contents
+    // );
 
     // Parse the contents and convert into Inline(s) by recursively calling this.
     let mut contents = parse_wiki_text(&mut contents)?;
@@ -293,16 +293,16 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
 
     let header = header.map_or(false, |s| s == "!");
 
-    // Trim spaces at the start and end of the content
-    let x: Vec<_> = contents
-        .iter_mut()
-        .map(|inline| {
-            if let Inline::PlainText { text } = inline {
-                *text = text.trim().to_string();
-            };
-            inline
-        })
-        .collect();
+    // Trim single spaces at the end of the content as these only refer to the alignment.
+    // Any aligment space at the start has been consumed by the parser
+
+    if let Some(Inline::PlainText { text }) = contents.last() {
+        let trimmed_text = trim_single_trailing_whitespace(text.clone());
+        // Remove the last plain text element of the inlines and replace it
+        // with the trimmed version
+        contents.pop();
+        contents.push(PlainText { text: trimmed_text });
+    }
 
     // TODO not doing merges at the moment
 
@@ -317,14 +317,14 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
 }
 
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
-    println!("DEBUG: Entering table_row parser with :  {}", input);
+    // println!("DEBUG: Entering table_row parser with :  {}", input);
 
     "|".parse_next(input)?;
     let cells = repeat_till(1.., table_cell, alt((line_ending, eof)))
         .map(|v: (Vec<TableCell>, &str)| v.0)
         .parse_next(input)?;
 
-    println!("DEBUG: Table row cells:  {:?}", cells);
+    // println!("DEBUG: Table row cells:  {:?}", cells);
 
     Ok(TableRow { cells })
 }
@@ -546,6 +546,14 @@ pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
     }
 
     Ok(inlines)
+}
+
+// Helper function
+fn trim_single_trailing_whitespace(mut s: String) -> String {
+    if matches!(s.chars().last(), Some(' ') | Some('\t')) {
+        s.pop();
+    }
+    s
 }
 
 #[cfg(test)]
@@ -1312,23 +1320,6 @@ mod tests {
     }
 
     #[test]
-    fn test_table_cell_contents() {
-        let mut input = "aaa [[link]] bbb ''bold''";
-
-        let v = table_cell_contents(&mut input).unwrap();
-
-        assert_eq!(
-            v,
-            vec![
-                Inline::plaintext("aaa "),
-                Inline::link("link", ""),
-                Inline::plaintext(" bbb "),
-                Inline::bold("bold"),
-            ]
-        )
-    }
-
-    #[test]
     fn test_table_cell() {
         let mut text = "aaa|bbb|ccc|";
 
@@ -1343,6 +1334,23 @@ mod tests {
         // );
 
         assert_eq!(v, TableCell::new("aaa"));
+    }
+
+    #[test]
+    fn test_table_cell_with_inlines() {
+        let mut input = "aaa [[link]] //italics//|bbb|''bold''|";
+
+        let v = table_cell(&mut input).unwrap();
+
+        assert_eq!(
+            v,
+            TableCell::new_with_inlines(vec![
+                Inline::plaintext("aaa "),
+                Inline::link("link", ""),
+                Inline::plaintext(" "),
+                Inline::italics("italics"),
+            ])
+        )
     }
 
     #[test]
