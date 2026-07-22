@@ -247,13 +247,22 @@ impl Inline {
 //     pub merge: CellMerge,
 // }
 impl TableCell {
-    /// Helpler function to create a simple table cell
+    /// Helper function to create a simple table cell
     pub fn new(text: &str) -> TableCell {
         TableCell {
             contents: vec![Inline::plaintext(text)],
             ..Default::default()
         }
     }
+
+    /// Helper function to crate a table cell with a set of inlines
+    pub fn new_with_inlines(inlines: Vec<Inline>) -> TableCell {
+        TableCell {
+            contents: inlines,
+            ..Default::default()
+        }
+    }
+
     pub fn header(&mut self) -> &mut TableCell {
         self.header = true;
         self
