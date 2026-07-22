@@ -232,6 +232,7 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+#[deprecated]
 fn table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
     let v = repeat(0.., alt((formatting, link, image, plaintext)))
         .fold(Vec::new, |mut acc: Vec<_>, item| {
@@ -244,27 +245,28 @@ fn table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
 }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
+    println!("DEBUG: Entering table_cell parser with: {}", input);
+
     let (alignment, leading_spaces, header, mut contents, _) = seq!(
         opt(vertical_alignment),
         space0,
         opt("!"),
-        //opt(alt((formatting, link, image, plaintext))),
-        table_cell_contents,
-        "|"
+        // table_cell_contents,
+        take_until(1.., '|'),
+        take(1usize) // remove the trailng '|'
     )
     .parse_next(input)?;
 
-    // let contents = match contents {
-    //     Some(Inline::PlainText { text }) => text,
-    //     Some(_) => panic!("Expected Inline::PlainText"),
-    //     None => String::new(),
-    // }
-    // .to_string();
+    println!(
+        "DEBUG: alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
+        alignment.clone(),
+        leading_spaces,
+        header,
+        contents
+    );
 
-    // let mut inlines = Vec::new();
-    // if let Some(inline) = contents {
-    //     inlines.push(inline);
-    // }
+    // Parse the contents and convert into Inline(s) by recursively calling this.
+    let mut contents = parse_wiki_text(&mut contents)?;
 
     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
@@ -315,10 +317,14 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
 }
 
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
+    println!("DEBUG: Entering table_row parser with :  {}", input);
+
     "|".parse_next(input)?;
     let cells = repeat_till(1.., table_cell, alt((line_ending, eof)))
         .map(|v: (Vec<TableCell>, &str)| v.0)
         .parse_next(input)?;
+
+    println!("DEBUG: Table row cells:  {:?}", cells);
 
     Ok(TableRow { cells })
 }
@@ -374,15 +380,12 @@ fn link(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn simple_link(input: &mut &str) -> ModalResult<Inline> {
-    println!("DEBUG Entering simple_link with text: {}", input);
     let link_statement: (&str, Option<(&str, &str)>, (&str, &str)) = seq!(
         "[[",
         opt((take_until(0.., '|'), take(1usize))),
         (take_until(1.., "]]"), take(2usize))
     )
     .parse_next(input)?;
-
-    println!("DEBUG Simple Link found: {}", link_statement.2.0);
 
     let display_text = link_statement.1.map(|l| String::from(l.0));
     let link = link_statement.2.0.to_string();
@@ -515,7 +518,6 @@ pub fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    println!("DEBUG: Entering parse_wiki_text");
     let mut inlines = Vec::<Inline>::new();
 
     while !input.is_empty() {
@@ -539,7 +541,6 @@ pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
 
         // Filter out end_of_lines as not needed
         if t != Inline::EndOfText {
-            println!("DEBUG parse_wiki_text pushing inline {:?}", t);
             inlines.push(t)
         };
     }
