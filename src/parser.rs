@@ -1,4 +1,5 @@
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
+use log::{Level, debug, error, info, log_enabled};
 use std::assert_matches;
 
 use winnow::{
@@ -245,7 +246,7 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
 // }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    // println!("DEBUG: Entering table_cell parser with: {}", input);
+    //debug!("Entering table_cell parser with: {}", input);
 
     let (alignment, leading_spaces, header, mut contents, _) = seq!(
         opt(vertical_alignment),
@@ -257,8 +258,8 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     )
     .parse_next(input)?;
 
-    // println!(
-    //     "DEBUG: alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
+    // debug!(
+    //     "alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
     //     alignment.clone(),
     //     leading_spaces,
     //     header,
@@ -266,7 +267,8 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     // );
 
     // Parse the contents and convert into Inline(s) by recursively calling this.
-    let mut contents = parse_wiki_text(&mut contents)?;
+    let s = contents.to_owned();
+    let mut contents = parse_wiki_text(&mut s.as_str())?;
 
     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
@@ -317,14 +319,14 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
 }
 
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
-    // println!("DEBUG: Entering table_row parser with :  {}", input);
+    // debug!("Entering table_row parser with :  {}", input);
 
     "|".parse_next(input)?;
     let cells = repeat_till(1.., table_cell, alt((line_ending, eof)))
         .map(|v: (Vec<TableCell>, &str)| v.0)
         .parse_next(input)?;
 
-    // println!("DEBUG: Table row cells:  {:?}", cells);
+    // debug!("Table row cells:  {:?}", cells);
 
     Ok(TableRow { cells })
 }
@@ -490,7 +492,7 @@ fn list(input: &mut &str) -> ModalResult<Inline> {
     alt((unordered_list, ordered_list)).parse_next(input)
 }
 
-// Only adding the itermediate parser so that the alt in the inline
+// Only adding the intermediate parser so that the alt in the inline
 // parser does not become too long
 fn blocks(input: &mut &str) -> ModalResult<Inline> {
     alt((blockquote, codeblock)).parse_next(input)
@@ -520,28 +522,40 @@ pub fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
     let mut inlines = Vec::<Inline>::new();
 
+    debug!("Entering parse_wiki_text with: {}", input);
+
     while !input.is_empty() {
-        let v = repeat_till(0.., any, inline)
+        // let v = repeat_till(0.., any, inline)
+        //     .map(|v: (Vec<char>, Inline)| v)
+        //     .with_taken()
+        //     .parse_next(input)?
+        //     .0;
+
+        // let ((characters, inline), _) = repeat_till(0.., any, inline)
+        //     .map(|v: (Vec<char>, Inline)| v)
+        //     .with_taken()
+        //     .parse_next(input)?;
+
+        // let s: String = characters.into_iter().collect();
+
+        let (characters, inline) = repeat_till(0.., any, inline)
             .map(|v: (Vec<char>, Inline)| v)
-            .with_taken()
-            .parse_next(input)?
-            .0;
+            .parse_next(input)?;
 
-        let s: String = v.0.into_iter().collect();
-        inlines.push(Inline::PlainText { text: s });
-        let t = v.1;
+        let s: String = characters.into_iter().collect();
 
-        // Sometimes a parser produce an empty plain text entry.
+        debug!("parse_wiki_text s={}", s);
+
+        // Sometimes a parser produces an empty plain text entry.
         // Filter these out
-        inlines.retain(|t| {
-            *t != Inline::PlainText {
-                text: String::new(),
-            }
-        });
+        if !s.is_empty() {
+            inlines.push(Inline::PlainText { text: s });
+        };
+        debug!("parse_wiki_text inlines: {:?}", inlines);
 
-        // Filter out end_of_lines as not needed
-        if t != Inline::EndOfText {
-            inlines.push(t)
+        // Filter out end of text as not needed
+        if inline != Inline::EndOfText {
+            inlines.push(inline)
         };
     }
 
@@ -562,6 +576,10 @@ mod tests {
     use serde_json::ser::CharEscape::Tab;
 
     use super::*;
+
+    fn log_this() {
+        simple_logger::init_with_level(log::Level::Debug).unwrap();
+    }
 
     #[test]
     fn test_italics() {
@@ -1074,6 +1092,22 @@ mod tests {
     }
 
     #[test]
+    fn test_mixed_links() {
+        let mut input =
+            "This is an inline [[link]] with some more text and a [[another link|new link]]";
+        let v = parse_wiki_text(&mut input).unwrap();
+
+        let expect = vec![
+            Inline::plaintext("This is an inline "),
+            Inline::link("link", ""),
+            Inline::plaintext(" with some more text and a "),
+            Inline::link("new link", "another link"),
+        ];
+
+        assert_eq!(v, expect);
+    }
+
+    #[test]
     fn test_external_link_direct() {
         let mut text = "[ext[An external Link]]";
 
@@ -1143,8 +1177,9 @@ mod tests {
     }
 
     #[test]
-    fn test_link() {
-        let mut input = "This is some [[link]] in the middle of text followed by [[another link]].";
+    fn test_links_embedded() {
+        log_this();
+        let mut input = "This is some [[link]] in the middle of text followed by [[another link]].\n//italics//";
 
         let l = parse_wiki_text(&mut input).unwrap();
 
@@ -1153,7 +1188,8 @@ mod tests {
             Inline::link("link", ""),
             Inline::plaintext(" in the middle of text followed by "),
             Inline::link("another link", ""),
-            Inline::plaintext("."),
+            Inline::plaintext(".\n"),
+            Inline::italics("italics"),
         ];
 
         assert_eq!(l, expectations);
@@ -1511,8 +1547,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Not working yet - TODO Change parse_wiki_text to use plaintext"]
+    //#[ignore = "Not working yet - TODO Change parse_wiki_text to use plaintext"]
     fn test_table_in_situ() {
+        log_this();
+
         let mut text = "This is some text with a [[link]] followed by a table:\n|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
 
         let inlines = parse_wiki_text(&mut text).unwrap();
@@ -1538,5 +1576,33 @@ mod tests {
         // let row = &rows[3];
         // let cell = &row.cells[0];
         // assert_eq!(*cell, TableCell::new("bottom left").left().bottom().build());
+    }
+
+    #[test]
+    fn try_parsing() {
+        log_this();
+
+        let mut input = "This is an inline [[link]] with some more text and a [[new link]]";
+        // while !input.is_empty() {
+        //     let x = repeat_till(0.., inline, eof)
+        //         .map(|v: (Vec<Inline>, &str)| v)
+        //         .parse_next(&mut input)
+        //         .unwrap();
+        //     debug!("Inlines:\n{:?}\n", x.0);
+        //     debug!("str:{:?}\n", x.1);
+        // }
+
+        while !input.is_empty() {
+            let (characters, inline) = repeat_till(0.., any, inline)
+                .map(|v: (Vec<char>, Inline)| v)
+                .parse_next(&mut input)
+                .unwrap();
+
+            let s: String = characters.iter().collect();
+            debug!("s:{}", s);
+            debug!("Inline:{:?}", inline);
+        }
+
+        assert!(true);
     }
 }
