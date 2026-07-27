@@ -246,9 +246,9 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
 // }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    //debug!("Entering table_cell parser with: {}", input);
+    debug!("Entering table_cell parser with: {}", input);
 
-    let (alignment, leading_spaces, header, mut contents, _) = seq!(
+    let (alignment, leading_spaces, header, contents, _) = seq!(
         opt(vertical_alignment),
         space0,
         opt("!"),
@@ -258,17 +258,17 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     )
     .parse_next(input)?;
 
-    // debug!(
-    //     "alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
-    //     alignment.clone(),
-    //     leading_spaces,
-    //     header,
-    //     contents
-    // );
+    debug!(
+        "alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
+        alignment.clone(),
+        leading_spaces,
+        header,
+        contents
+    );
 
     // Parse the contents and convert into Inline(s) by recursively calling this.
     let s = contents.to_owned();
-    let mut contents = parse_wiki_text(&mut s.as_str())?;
+    let mut contents = parse_table_cell_contents(&mut s.as_str())?;
 
     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
@@ -316,6 +316,36 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     };
 
     Ok(table_cell)
+}
+
+pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
+    let mut inlines = Vec::<Inline>::new();
+
+    debug!("Entering parse_table_cell_contents with: {}", input);
+
+    while !input.is_empty() {
+        let (characters, inline) = repeat_till(0.., any, alt((formatting, link, image, plaintext)))
+            .map(|v: (Vec<char>, Inline)| v)
+            .parse_next(input)?;
+
+        let s: String = characters.into_iter().collect();
+
+        debug!("parse_table_cell_contents s={}", s);
+
+        // Sometimes a parser produces an empty plain text entry.
+        // Filter these out
+        if !s.is_empty() {
+            inlines.push(Inline::PlainText { text: s });
+        };
+        debug!("parse_table_cell_contents inlines: {:?}", inlines);
+
+        // Filter out end of text as not needed
+        if inline != Inline::EndOfText {
+            inlines.push(inline)
+        };
+    }
+
+    Ok(inlines)
 }
 
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
@@ -1357,6 +1387,8 @@ mod tests {
 
     #[test]
     fn test_table_cell() {
+        log_this();
+
         let mut text = "aaa|bbb|ccc|";
 
         let v = table_cell(&mut text).unwrap();
