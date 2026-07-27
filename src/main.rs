@@ -3,6 +3,7 @@ use std::io::prelude::*;
 
 use anyhow::{Context, Result};
 
+use log::{Level, debug, error, info, log_enabled};
 mod tiddler;
 use tiddler::Tiddler;
 
@@ -12,7 +13,9 @@ use parser::parse_wiki_text;
 mod abstract_syntax;
 
 fn main() {
-    println!("TiddlyWiki to Obsidian");
+    simple_logger::init_with_level(log::Level::Debug).unwrap();
+
+    info!("TiddlyWiki to Obsidian");
 
     let mut tw_file = File::open("./tiddlywiki/empty.html").unwrap();
     let mut tw_string = String::new();
