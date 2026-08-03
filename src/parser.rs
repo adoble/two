@@ -13,11 +13,11 @@ use winnow::{
         space1, tab,
     },
     combinator::{
-        alt, delimited, dispatch, eof, fail, not, opt, preceded, repeat, repeat_till, separated,
-        seq, terminated,
+        alt, delimited, dispatch, eof, fail, not, opt, peek, preceded, repeat, repeat_till,
+        separated, seq, terminated,
     },
-    error::StrContext,
-    stream::AsChar,
+    error::{ContextError, ErrMode, StrContext, StrContextValue},
+    stream::{AsChar, LocatingSlice, Location},
     token::{any, literal, one_of, take, take_till, take_until, take_while},
 };
 
@@ -238,12 +238,6 @@ fn plaintext_old(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn plaintext(input: &mut &str) -> ModalResult<Inline> {
-    // let end = [input.find("[["), input.find("**"), input.find("//")]
-    //     .into_iter()
-    //     .flatten()
-    //     .min()
-    //     .unwrap_or(input.len());
-
     let marker_positions: Vec<_> = MARKERS.iter().map(|&m| input.find(m)).collect();
     let end = marker_positions
         .into_iter()
@@ -435,31 +429,45 @@ fn link(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn simple_link(input: &mut &str) -> ModalResult<Inline> {
-    let link_statement: (&str, Option<(&str, &str)>, &str, &str) = seq!(
+    let (_, link_statement, _) = seq!(
         "[[",
-        opt((take_until(0.., '|'), take(1usize))),
+        //opt((take_until(0.., '|'), take(1usize))),
         // (take_until(1.., "]]"), take(2usize))
         take_until(1.., "]]"),
         take(2usize)
     )
     .parse_next(input)?;
 
-    let display_text = link_statement.1.map(|l| String::from(l.0));
-    let link = link_statement.2.to_string();
+    // Manually extracting the link and its description as the declarative
+    // approach gave problems in parsing many links
+    let parts: Vec<&str> = link_statement.split('|').collect();
+
+    let (link, display_text) = match parts.len() {
+        1 => (parts[0].to_string(), None),
+        2 => (parts[1].to_string(), Some(parts[0].to_string())),
+        _ => {
+            return Err(ErrMode::Cut(ContextError::new()));
+        }
+    };
 
     Ok(Inline::Link { display_text, link })
 }
 
 fn external_link(input: &mut &str) -> ModalResult<Inline> {
-    let link_statement: (&str, Option<(&str, &str)>, (&str, &str)) = seq!(
-        "[ext[",
-        opt((take_until(0.., '|'), take(1usize))),
-        (take_until(1.., "]]"), take(2usize))
-    )
-    .parse_next(input)?;
+    let (_, link_statement, _) =
+        seq!("[ext[", take_until(1.., "]]"), take(2usize)).parse_next(input)?;
 
-    let display_text = link_statement.1.map(|l| String::from(l.0));
-    let link = link_statement.2.0.to_string();
+    // Manually extracting the link and its description as the declarative
+    // approach gave problems in parsing many links
+    let parts: Vec<&str> = link_statement.split('|').collect();
+
+    let (link, display_text) = match parts.len() {
+        1 => (parts[0].to_string(), None),
+        2 => (parts[1].to_string(), Some(parts[0].to_string())),
+        _ => {
+            return Err(ErrMode::Cut(ContextError::new()));
+        }
+    };
 
     Ok(Inline::Link { display_text, link })
 }
@@ -563,7 +571,7 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
         image,
         formatting,
         table,
-        plaintext,
+        plaintext, // Has to be at the end as this parser is the least specific.
     ))
     .parse_next(input)
 }
@@ -583,30 +591,6 @@ pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
     let inlines = repeat_till(0.., inline, eof)
         .map(|v: (Vec<Inline>, _)| v)
         .parse_next(input)?;
-
-    // while !input.is_empty() {
-    //     let (characters, inline) = repeat_till(0.., any, inline)
-    //         .map(|v: (Vec<char>, Inline)| v)
-    //         .parse_next(input)?;
-
-    //     let s: String = characters.into_iter().collect();
-
-    //     debug!("parse_wiki_text s={}", s);
-
-    //     // Sometimes a parser produces an empty plain text entry.
-    //     // Filter these out
-    //     if !s.is_empty() {
-    //         inlines.push(Inline::PlainText { text: s });
-    //     };
-    //     debug!("parse_wiki_text inlines: {:?}", inlines);
-
-    //     // Filter out end of text as not needed
-    //     if inline != Inline::EndOfText {
-    //         inlines.push(inline)
-    //     };
-    // }
-
-    // Ok(inlines)
 
     Ok(inlines.0)
 }
@@ -1163,6 +1147,12 @@ mod tests {
         let v = link(&mut text).unwrap();
 
         assert_eq!(v, Inline::link("An external Link", ""));
+
+        let mut text = "[ext[Article|http:://pub.com/article]]";
+
+        let v = link(&mut text).unwrap();
+
+        assert_eq!(v, Inline::link("http:://pub.com/article", "Article"));
     }
 
     #[test]
@@ -1207,7 +1197,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Currently does not work."]
     fn test_camel_case_link() {
         let mut text =
             "A key capability of WikiText is the ability to make links, even CamelCaseLinks.";
@@ -1394,7 +1383,7 @@ mod tests {
             }
         );
 
-        let mut text = " Contents 42 |";
+        let mut text = " Contents 42 [[";
         let v = plaintext(&mut text).unwrap();
         assert_eq!(
             v,
@@ -1630,29 +1619,8 @@ mod tests {
     }
 
     #[test]
-    fn try_parsing() {
+    fn sandbox() {
         log_this();
-
-        let mut input = "This is an inline [[link]] with some more text and a [[new link]]";
-        // while !input.is_empty() {
-        //     let x = repeat_till(0.., inline, eof)
-        //         .map(|v: (Vec<Inline>, &str)| v)
-        //         .parse_next(&mut input)
-        //         .unwrap();
-        //     debug!("Inlines:\n{:?}\n", x.0);
-        //     debug!("str:{:?}\n", x.1);
-        // }
-
-        while !input.is_empty() {
-            let (characters, inline) = repeat_till(0.., any, inline)
-                .map(|v: (Vec<char>, Inline)| v)
-                .parse_next(&mut input)
-                .unwrap();
-
-            let s: String = characters.iter().collect();
-            debug!("s:{}", s);
-            debug!("Inline:{:?}", inline);
-        }
 
         assert!(true);
     }
