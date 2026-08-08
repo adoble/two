@@ -19,8 +19,8 @@ use crate::abstract_syntax::{
     TableCell, TableRow,
 };
 
-const MARKERS: [&str; 15] = [
-    "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "*", "#", "[img", "[[", "{{",
+const MARKERS: [&str; 16] = [
+    "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "*", "#", "[img", "[[", "{{", "|",
 ];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
@@ -1690,7 +1690,6 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "Not working yet - TODO Change parse_wiki_text to use plaintext"]
     fn test_table_in_situ() {
         let mut text = "This is some text with a [[link]] followed by a table:\n|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
 
@@ -1701,22 +1700,10 @@ mod tests {
         assert_eq!(inlines[1], Inline::link("link", ""));
         assert_eq!(inlines[2], Inline::plaintext(" followed by a table:\n"));
 
-        assert_matches!(&inlines[4], Inline::Table {rows} if rows.len() == 4);
-        assert_matches!(&inlines[4], Inline::Table {rows} if rows[0].cells[1] == TableCell::new("Middle").header().center().build());
-        assert_matches!(&inlines[4], Inline::Table {rows} if rows[1].cells[2] == TableCell::new("top right").right().top().build());
-        assert_matches!(&inlines[4], Inline::Table {rows} if rows[3].cells[0] == TableCell::new("bottom left").left().bottom().build());
-
-        // let row = &rows[0];
-        // let cell = &row.cells[1];
-        // assert_eq!(*cell, TableCell::new("Middle").header().center().build());
-
-        // let row = &rows[1];
-        // let cell = &row.cells[2];
-        // assert_eq!(*cell, TableCell::new("top right").right().top().build());
-
-        // let row = &rows[3];
-        // let cell = &row.cells[0];
-        // assert_eq!(*cell, TableCell::new("bottom left").left().bottom().build());
+        assert_matches!(&inlines[3], Inline::Table {rows} if rows[0].cells[1] == TableCell::new("Middle").header().center().build());
+        assert_matches!(&inlines[3], Inline::Table {rows} if rows.len() == 4);
+        assert_matches!(&inlines[3], Inline::Table {rows} if rows[1].cells[2] == TableCell::new("top right").right().top().build());
+        assert_matches!(&inlines[3], Inline::Table {rows} if rows[3].cells[0] == TableCell::new("bottom left").left().bottom().build());
     }
 
     #[test]
