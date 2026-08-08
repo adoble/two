@@ -1,6 +1,9 @@
+#![allow(dead_code)]
+
 use serde::Deserialize;
 use std::collections::HashMap;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct Tiddler {
     pub title: String,

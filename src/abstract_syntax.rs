@@ -1,4 +1,4 @@
-use std::{default, os::unix::fs::OpenOptionsExt};
+#![allow(dead_code)]
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Inline {
@@ -105,7 +105,7 @@ pub enum CellHorizontalAlignment {
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
-enum CellMerge {
+pub enum CellMerge {
     Above,
     Left,
     Right,

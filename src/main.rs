@@ -1,14 +1,15 @@
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::prelude::*;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use log::{Level, debug, error, info, log_enabled};
 mod tiddler;
 use tiddler::Tiddler;
 
+#[allow(unused_imports)]
+use log::{debug, error, info, log_enabled};
+
 mod parser;
-use parser::parse_wiki_text;
 
 mod abstract_syntax;
 

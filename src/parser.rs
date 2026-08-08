@@ -1,21 +1,17 @@
+#![allow(dead_code)]
 /// Parses the WikiText as defined [here](https://tiddlywiki.com/static/WikiText.html)
-use log::{Level, debug, error, info, log_enabled};
-use std::assert_matches;
-
+///
 use winnow::{
     ModalResult, Parser,
-    ascii::{
-        alphanumeric0, alphanumeric1, digit1, line_ending, multispace0, multispace1, space0,
-        space1, tab,
-    },
-    combinator::{
-        alt, delimited, dispatch, eof, fail, not, opt, peek, preceded, repeat, repeat_till,
-        separated, seq, terminated,
-    },
-    error::{ContextError, ErrMode, StrContext, StrContextValue},
-    stream::{AsChar, LocatingSlice, Location, Offset, Stream},
+    ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1},
+    combinator::{alt, delimited, eof, fail, opt, preceded, repeat, repeat_till, separated, seq},
+    error::{ContextError, ErrMode},
+    stream::AsChar,
     token::{any, literal, one_of, take, take_till, take_until, take_while},
 };
+
+#[allow(unused_imports)]
+use log::{debug, error, info};
 
 use crate::abstract_syntax::{
     CellAlignment, CellHorizontalAlignment, CellVerticalAlignment, DimensionField, Dimensions,
@@ -257,7 +253,7 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
 
 fn camel_case_link_position(input: &str) -> Option<usize> {
     let words = input.split_whitespace();
-    let mut pos = 0;
+
     for word in words {
         let word_len = word.len();
         let word_vec = word.chars().collect::<Vec<_>>();
@@ -273,7 +269,7 @@ fn camel_case_link_position(input: &str) -> Option<usize> {
         if head.len() == 0 || head.len() == word_len {
             continue;
         }
-        pos = head.len();
+        let mut pos = head.len();
 
         let lowers: String = word_slice[pos..]
             .iter()
@@ -674,8 +670,6 @@ pub fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    let mut inlines = Vec::<Inline>::new();
-
     debug!("Entering parse_wiki_text with: {}", input);
 
     let inlines = repeat_till(0.., inline, eof)
@@ -697,6 +691,8 @@ fn trim_single_trailing_whitespace(mut s: String) -> String {
 mod tests {
     use pretty_assertions::{assert_eq, assert_ne};
     use serde_json::ser::CharEscape::Tab;
+
+    use std::assert_matches;
 
     use super::*;
 
