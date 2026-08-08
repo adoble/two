@@ -2,10 +2,6 @@
 use log::{Level, debug, error, info, log_enabled};
 use std::assert_matches;
 
-const MARKERS: [&str; 15] = [
-    "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "*", "#", "[img", "[[", "{{",
-];
-
 use winnow::{
     ModalResult, Parser,
     ascii::{
@@ -17,7 +13,7 @@ use winnow::{
         separated, seq, terminated,
     },
     error::{ContextError, ErrMode, StrContext, StrContextValue},
-    stream::{AsChar, LocatingSlice, Location},
+    stream::{AsChar, LocatingSlice, Location, Offset, Stream},
     token::{any, literal, one_of, take, take_till, take_until, take_while},
 };
 
@@ -26,6 +22,10 @@ use crate::abstract_syntax::{
     Inline::{self, PlainText},
     TableCell, TableRow,
 };
+
+const MARKERS: [&str; 15] = [
+    "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "*", "#", "[img", "[[", "{{",
+];
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
@@ -238,7 +238,12 @@ fn plaintext_old(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn plaintext(input: &mut &str) -> ModalResult<Inline> {
-    let marker_positions: Vec<_> = MARKERS.iter().map(|&m| input.find(m)).collect();
+    let mut marker_positions: Vec<_> = MARKERS.iter().map(|&m| input.find(m)).collect();
+
+    // Now find the first camel case link and add it's position
+    let camel_case_link_position = camel_case_link_position(input);
+    marker_positions.push(camel_case_link_position);
+
     let end = marker_positions
         .into_iter()
         .flatten()
@@ -249,6 +254,91 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
 
     Ok(Inline::PlainText { text: text.into() })
 }
+
+fn camel_case_link_position(input: &str) -> Option<usize> {
+    let words = input.split_whitespace();
+    let mut pos = 0;
+    for word in words {
+        let word_len = word.len();
+        let word_vec = word.chars().collect::<Vec<_>>();
+        let word_slice = word_vec.as_slice();
+
+        // First character(s) should be upper case. If all upper case
+        // then this is also not a camel case link
+        let head: String = word_slice
+            .into_iter()
+            .take_while(|c| c.is_uppercase())
+            .collect();
+
+        if head.len() == 0 || head.len() == word_len {
+            continue;
+        }
+        pos = head.len();
+
+        let lowers: String = word_slice[pos..]
+            .iter()
+            .take_while(|c| c.is_lowercase())
+            .collect();
+
+        pos = pos + lowers.len();
+
+        // If no lower case characters are found or if there are only lowercase
+        // characters after the leading uppercase characters then this is NOT
+        // a camel case link
+        if lowers.len() == 0 || pos == word_len {
+            continue;
+        }
+
+        let uppers: String = word_slice[pos..]
+            .iter()
+            .take_while(|&&c| c.is_uppercase())
+            .collect();
+
+        // If no upper case characters are following the lower case characters
+        // then this is not a camel case link.
+        if uppers.len() == 0 {
+            continue;
+        };
+
+        // If at this point have identified a camel case link.
+        // Now need to return the position
+        let final_pos = input.find(word);
+        return final_pos;
+    }
+
+    None
+}
+
+fn starts_with_capital(word: &str) -> bool {
+    word.chars().next().map_or(false, |c| c.is_uppercase())
+}
+
+// fn camel_case_link_start(input: &str) -> Option<usize> {
+//     let candidate_start = input.find(|c: char| c.is_uppercase());
+
+//     match candidate_start {
+//         // First capital letter is at the end of the input so cannot be a camel case link
+//         Some(start) if start == input.len() - 1 => None,
+
+//         // Capital letter found. Look for another before a white space occurs
+//         Some(start) => {
+//             let rest: String = input[start..]
+//                 .chars()
+//                 .peekable()
+//                 .take_while(|c| !c.is_whitespace())
+//                 .collect();
+//             //.
+//             if rest.find(|c: char| c.is_uppercase()).is_some() {
+//                 Some(start)
+//             } else {
+//                 None
+//             }
+//         }
+
+//         // No captial letter found therefore not a camel case link
+//         None => None,
+//     }
+// }
 
 // #[deprecated]
 // fn table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -1179,7 +1269,7 @@ mod tests {
             inline,
             Inline::Link {
                 display_text: None,
-                link: "CamelCase".to_string()
+                link: "CamelCase".to_string(),
             }
         );
 
@@ -1191,7 +1281,7 @@ mod tests {
             inline,
             Inline::Link {
                 display_text: None,
-                link: "CamelCaseAgain".to_string()
+                link: "CamelCaseAgain".to_string(),
             }
         );
     }
@@ -1216,7 +1306,6 @@ mod tests {
 
     #[test]
     fn test_links_embedded() {
-        log_this();
         let mut input = "This is some [[link]] in the middle of text followed by [[another link]].\n//italics//";
 
         let l = parse_wiki_text(&mut input).unwrap();
@@ -1372,6 +1461,26 @@ mod tests {
         assert_eq!(v.vertical, CellVerticalAlignment::Bottom);
     }
 
+    // #[test]
+    // fn test_camel_case_link_start() {
+    //     let mut input = "This has no camel case link.";
+
+    //     let start = camel_case_link_start(input);
+    //     assert_eq!(start, None);
+
+    //     let mut input = "This has One CamelCase link.";
+    //     let start = camel_case_link_start(input);
+    //     assert_eq!(start, Some(13));
+
+    //     let mut input = "NO CAMELCASE";
+    //     let start = camel_case_link_start(input);
+    //     assert_eq!(start, None);
+
+    //     let mut input = "No CAMel case";
+    //     let start = camel_case_link_start(input);
+    //     assert_eq!(start, None);
+    // }
+
     #[test]
     fn test_plain_text() {
         let mut text = " Contents42 ";
@@ -1395,8 +1504,6 @@ mod tests {
 
     #[test]
     fn test_table_cell() {
-        log_this();
-
         let mut text = "aaa|bbb|ccc|";
 
         let v = table_cell(&mut text).unwrap();
@@ -1589,8 +1696,6 @@ mod tests {
     #[test]
     //#[ignore = "Not working yet - TODO Change parse_wiki_text to use plaintext"]
     fn test_table_in_situ() {
-        log_this();
-
         let mut text = "This is some text with a [[link]] followed by a table:\n|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
 
         let inlines = parse_wiki_text(&mut text).unwrap();
@@ -1619,8 +1724,55 @@ mod tests {
     }
 
     #[test]
+    fn test_camel_case_link_position() {
+        let input = "This has no camel case link.";
+        assert_eq!(camel_case_link_position(input), None);
+
+        let input = "This has one CamelCaseLink.";
+        assert_eq!(camel_case_link_position(input), Some(13));
+
+        let input = "CamelCase at the beginning";
+        assert_eq!(camel_case_link_position(input), Some(0));
+
+        let input = "Multiple CamelCases are InThis.";
+        assert_eq!(camel_case_link_position(input), Some(9));
+
+        let input = "this has no capitial letters";
+        assert_eq!(camel_case_link_position(input), None);
+
+        let input = ""; // Empty string
+        assert_eq!(camel_case_link_position(input), None);
+
+        let input = "This has AMulitipleCapLetterStart";
+        assert_eq!(camel_case_link_position(input), Some(9));
+
+        let input = "This is NNot a camel case link";
+        assert_eq!(camel_case_link_position(input), None);
+
+        let input = "Minimal - CaM -  camel case link";
+        assert_eq!(camel_case_link_position(input), Some(10));
+    }
+
+    #[test]
     fn sandbox() {
         log_this();
+
+        // let s = "CamelcaSe";
+        let s = "CaMe";
+        let v = s.chars().collect::<Vec<char>>();
+        // let x: Vec<&[char]> = v.chunks(2).collect();
+        let pairs: Vec<&[char]> = v.windows(2).collect();
+        let pairs: Vec<&[char]> = v.chunks(2).collect();
+        println!("{:?}", &pairs);
+
+        let humps: usize = pairs
+            .into_iter()
+            .map(|pair| pair[0].is_uppercase() ^ pair[1].is_uppercase())
+            //.map(|b| if b { 1usize } else { 0usize })
+            .map(usize::from)
+            .sum();
+
+        println!("sandbox: {:?}", humps);
 
         assert!(true);
     }
