@@ -662,13 +662,6 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
     .parse_next(input)
 }
 
-#[deprecated]
-pub fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
-    eof.parse_next(input)?;
-
-    Ok(Inline::EndOfText)
-}
-
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
     debug!("Entering parse_wiki_text with: {}", input);
 
@@ -689,8 +682,7 @@ fn trim_single_trailing_whitespace(mut s: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::{assert_eq, assert_ne};
-    use serde_json::ser::CharEscape::Tab;
+    use pretty_assertions::assert_eq;
 
     use std::assert_matches;
 
@@ -1062,7 +1054,7 @@ mod tests {
     fn test_heading_direct_boundary_conditions() {
         let mut text = " Some text!  Really";
 
-        let inline = heading(&mut text).unwrap();
+        let _inline = heading(&mut text).unwrap();
     }
 
     #[test]
@@ -1316,15 +1308,6 @@ mod tests {
         ];
 
         assert_eq!(l, expectations);
-    }
-
-    #[test]
-    fn test_end_of_text() {
-        let mut text = "";
-
-        let inline = end_of_text(&mut text).unwrap();
-
-        assert_eq!(inline, Inline::EndOfText);
     }
 
     #[test]
@@ -1656,15 +1639,6 @@ mod tests {
     }
 
     #[test]
-    fn test_another_row() {
-        let mut text = "|^top left |^ top center |^ top right|\n";
-
-        let table = table_row(&mut text).unwrap();
-
-        assert!(true);
-    }
-
-    #[test]
     fn test_table_direct() {
         let mut text = "|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
 
@@ -1734,29 +1708,5 @@ mod tests {
 
         let input = "Minimal - CaM -  camel case link";
         assert_eq!(camel_case_link_position(input), Some(10));
-    }
-
-    #[test]
-    fn sandbox() {
-        log_this();
-
-        // let s = "CamelcaSe";
-        let s = "CaMe";
-        let v = s.chars().collect::<Vec<char>>();
-        // let x: Vec<&[char]> = v.chunks(2).collect();
-        let pairs: Vec<&[char]> = v.windows(2).collect();
-        let pairs: Vec<&[char]> = v.chunks(2).collect();
-        println!("{:?}", &pairs);
-
-        let humps: usize = pairs
-            .into_iter()
-            .map(|pair| pair[0].is_uppercase() ^ pair[1].is_uppercase())
-            //.map(|b| if b { 1usize } else { 0usize })
-            .map(usize::from)
-            .sum();
-
-        println!("sandbox: {:?}", humps);
-
-        assert!(true);
     }
 }

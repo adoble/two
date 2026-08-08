@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_table_cell() {
-        let mut t = TableCell::new("aaa");
+        let t = TableCell::new("aaa");
 
         assert_eq!(
             t,
