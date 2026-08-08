@@ -261,12 +261,9 @@ fn camel_case_link_position(input: &str) -> Option<usize> {
 
         // First character(s) should be upper case. If all upper case
         // then this is also not a camel case link
-        let head: String = word_slice
-            .into_iter()
-            .take_while(|c| c.is_uppercase())
-            .collect();
+        let head: String = word_slice.iter().take_while(|c| c.is_uppercase()).collect();
 
-        if head.len() == 0 || head.len() == word_len {
+        if head.is_empty() || head.len() == word_len {
             continue;
         }
         let mut pos = head.len();
@@ -276,12 +273,12 @@ fn camel_case_link_position(input: &str) -> Option<usize> {
             .take_while(|c| c.is_lowercase())
             .collect();
 
-        pos = pos + lowers.len();
+        pos += lowers.len();
 
         // If no lower case characters are found or if there are only lowercase
         // characters after the leading uppercase characters then this is NOT
         // a camel case link
-        if lowers.len() == 0 || pos == word_len {
+        if lowers.is_empty() || pos == word_len {
             continue;
         }
 
@@ -292,7 +289,7 @@ fn camel_case_link_position(input: &str) -> Option<usize> {
 
         // If no upper case characters are following the lower case characters
         // then this is not a camel case link.
-        if uppers.len() == 0 {
+        if uppers.is_empty() {
             continue;
         };
 
@@ -306,7 +303,7 @@ fn camel_case_link_position(input: &str) -> Option<usize> {
 }
 
 fn starts_with_capital(word: &str) -> bool {
-    word.chars().next().map_or(false, |c| c.is_uppercase())
+    word.chars().next().is_some_and(|c| c.is_uppercase())
 }
 
 // fn camel_case_link_start(input: &str) -> Option<usize> {
@@ -381,7 +378,7 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     // 2) The contents are really inlines, so need to find the last one.
     let start_space = !leading_spaces.is_empty();
     let end_space = if let Some(Inline::PlainText { text }) = contents.last() {
-        text.chars().next_back().map_or(false, |c| c == ' ')
+        text.ends_with(' ')
     } else {
         false
     };
@@ -396,7 +393,7 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     };
     alignment.horizontal = horizontal_alignment;
 
-    let header = header.map_or(false, |s| s == "!");
+    let header = header == Some("!");
 
     // Trim single spaces at the end of the content as these only refer to the alignment.
     // Any aligment space at the start has been consumed by the parser
@@ -495,8 +492,8 @@ fn image(input: &mut &str) -> ModalResult<Inline> {
     )
     .parse_next(input)?;
 
-    let width = img.2.clone().map(|d| d.width).flatten();
-    let height = img.2.map(|d| d.height).flatten();
+    let width = img.2.clone().and_then(|d| d.width);
+    let height = img.2.and_then(|d| d.height);
     let caption = img.5.map(|s| String::from(s.0));
     let link = String::from(img.6.0);
 

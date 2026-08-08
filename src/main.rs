@@ -36,7 +36,7 @@ fn main() {
     println!("len: {}", filtered_tiddlers.len());
 
     for tiddler in filtered_tiddlers {
-        create_tiddler_file(&tiddler).unwrap();
+        create_tiddler_file(tiddler).unwrap();
     }
 }
 
