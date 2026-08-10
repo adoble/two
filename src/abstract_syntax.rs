@@ -50,6 +50,7 @@ pub enum Inline {
     Link {
         display_text: Option<String>,
         link: String,
+        external: bool,
     },
     OrderedList {
         text: String,
@@ -216,7 +217,11 @@ impl Inline {
         let display_text = (!display_text.is_empty()).then(|| display_text.to_string());
         let link = link.to_string();
 
-        Inline::Link { display_text, link }
+        Inline::Link {
+            display_text,
+            link,
+            external: false,
+        }
     }
 
     pub fn ordered_list(text: &str, level: usize) -> Inline {

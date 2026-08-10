@@ -10,6 +10,8 @@ use winnow::{
     token::{any, literal, one_of, take, take_till, take_until, take_while},
 };
 
+use url::Url;
+
 #[allow(unused_imports)]
 use log::{debug, error, info};
 
@@ -533,7 +535,14 @@ fn simple_link(input: &mut &str) -> ModalResult<Inline> {
         }
     };
 
-    Ok(Inline::Link { display_text, link })
+    // Check if this is an external link.
+    let external = Url::parse(&link).is_ok();
+
+    Ok(Inline::Link {
+        display_text,
+        link,
+        external,
+    })
 }
 
 fn external_link(input: &mut &str) -> ModalResult<Inline> {
@@ -552,7 +561,13 @@ fn external_link(input: &mut &str) -> ModalResult<Inline> {
         }
     };
 
-    Ok(Inline::Link { display_text, link })
+    // Assuming that the URL given is valid
+
+    Ok(Inline::Link {
+        display_text,
+        link,
+        external: true,
+    })
 }
 
 fn camel_case_link(input: &mut &str) -> ModalResult<Inline> {
@@ -564,6 +579,7 @@ fn camel_case_link(input: &mut &str) -> ModalResult<Inline> {
     Ok(Inline::Link {
         display_text: None,
         link: l.to_string(),
+        external: false,
     })
 }
 
@@ -1255,6 +1271,7 @@ mod tests {
             Inline::Link {
                 display_text: None,
                 link: "CamelCase".to_string(),
+                external: false,
             }
         );
 
@@ -1267,6 +1284,7 @@ mod tests {
             Inline::Link {
                 display_text: None,
                 link: "CamelCaseAgain".to_string(),
+                external: false,
             }
         );
     }
