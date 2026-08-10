@@ -224,6 +224,17 @@ impl Inline {
         }
     }
 
+    pub fn ext_link(link: &str, display_text: &str) -> Inline {
+        let display_text = (!display_text.is_empty()).then(|| display_text.to_string());
+        let link = link.to_string();
+
+        Inline::Link {
+            display_text,
+            link,
+            external: true,
+        }
+    }
+
     pub fn ordered_list(text: &str, level: usize) -> Inline {
         Inline::OrderedList {
             text: text.to_string(),

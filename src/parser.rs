@@ -1237,13 +1237,19 @@ mod tests {
 
         let v = link(&mut text).unwrap();
 
-        assert_eq!(v, Inline::link("An external Link", ""));
+        assert_eq!(v, Inline::ext_link("An external Link", ""));
 
-        let mut text = "[ext[Article|http:://pub.com/article]]";
+        let mut text = "[ext[Article|http://pub.com/article]]";
 
         let v = link(&mut text).unwrap();
 
-        assert_eq!(v, Inline::link("http:://pub.com/article", "Article"));
+        assert_eq!(v, Inline::ext_link("http://pub.com/article", "Article"));
+
+        let mut text = "[[http://example.com]]";
+
+        let v = link(&mut text).unwrap();
+
+        assert_eq!(v, Inline::ext_link("http://example.com", ""));
     }
 
     #[test]
