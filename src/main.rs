@@ -6,6 +6,9 @@ use anyhow::Result;
 mod tiddler;
 use tiddler::Tiddler;
 
+mod markdown;
+use markdown::Markdown;
+
 #[allow(unused_imports)]
 use log::{debug, error, info, log_enabled};
 

@@ -157,6 +157,12 @@ impl Inline {
         }
     }
 
+    pub fn subscript(text: &str) -> Inline {
+        Inline::Subscript {
+            text: text.to_string(),
+        }
+    }
+
     pub fn strikethrough(text: &str) -> Inline {
         Inline::Strikethrough {
             text: text.to_string(),
