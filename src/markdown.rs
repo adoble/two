@@ -57,7 +57,11 @@ impl Markdown {
                 external,
             } => Self::format_link(link, display_text, external),
 
-            Inline::OrderedList { text, level } => todo!(),
+            Inline::OrderedList {
+                text,
+                level,
+                numbering,
+            } => todo!(),
             Inline::UnorderedList { text, level } => format!("- {}{}", " ".repeat(level * 4), text),
             Inline::Transclusion { tiddler } => format!("![[{tiddler}]]"),
             Inline::Table { rows } => Self::format_table(rows),

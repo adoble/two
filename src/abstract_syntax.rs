@@ -55,6 +55,7 @@ pub enum Inline {
     OrderedList {
         text: String,
         level: usize,
+        numbering: Vec<usize>,
     },
     UnorderedList {
         text: String,
@@ -241,10 +242,11 @@ impl Inline {
         }
     }
 
-    pub fn ordered_list(text: &str, level: usize) -> Inline {
+    pub fn ordered_list(text: &str, level: usize, numbering: Vec<usize>) -> Inline {
         Inline::OrderedList {
             text: text.to_string(),
             level,
+            numbering,
         }
     }
 

@@ -61,7 +61,8 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     // Parse the tiddler text
     let mut input = tiddler.text.as_str();
     let ast = parse_wiki_text(&mut input).unwrap();
-    let output_text = convert_to_markdown(&ast);
+    let markdown = Markdown::from_inlines(&ast);
+
     todo!("TODO write out the markdown to the files");
 
     // let mut file = OpenOptions::new()
@@ -74,72 +75,6 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
         .expect("write failed");
 
     Ok(())
-}
-
-fn convert_to_markdown(ast: &Vec<Inline>) -> String {
-    let mut markdown = String::new();
-    for inline in ast {
-        match inline {
-            Inline::PlainText { text } => markdown.push_str(text),
-            Inline::Italics { text } => markdown.push_str(&wrap("_", text)),
-            Inline::Bold { text } => markdown.push_str(&wrap("**", text)),
-
-            Inline::Underlined { text } => markdown.push_str(&format!("<u>{text}</u>")),
-            Inline::Superscript { text } => markdown.push_str(&format!("<sup>{text}</sup>")),
-            Inline::Subscript { text } => markdown.push_str(&format!("<sub>{text}</sub>")),
-            Inline::Strikethrough { text } => markdown.push_str(&wrap("~~", text)),
-            Inline::Code { text } => markdown.push_str(&wrap("`", text)),
-            Inline::Highlight { text } => markdown.push_str(&wrap("==", text)),
-            Inline::BlockQuote { text, citation } => {
-                markdown.push_str(&format!("> {text}"));
-                if let Some(citation) = citation {
-                    markdown.push_str(&format!("\n\n   __{citation}__"));
-                }
-            }
-            Inline::CodeBlock { text, language } => markdown.push_str(&format!(
-                "```{}\n{}\n```",
-                language.clone().unwrap_or(String::new()),
-                text
-            )),
-            Inline::Heading { text, level } => {
-                for _ in 0..*level {
-                    markdown.push('#')
-                }
-                markdown.push(' ');
-                markdown.push_str(text);
-            }
-            Inline::Image {
-                width,
-                height,
-                caption,
-                link,
-            } => {
-                let caption = (caption.clone()).unwrap_or(link.clone());
-                let dimensions = match (width, height) {
-                    (Some(width), Some(height)) => format!("|{width}x{height}"),
-                    (Some(width), None) => format!("|{width}"),
-                    _ => String::new(),
-                };
-                markdown.push_str(&format!("![{caption}{dimensions}]({link})"));
-            }
-            Inline::Link {
-                display_text,
-                link,
-                external,
-            } => {
-                markdown.push_str(&link_markdown(link, display_text, external));
-            }
-            Inline::OrderedList { text, level } => todo!(),
-            Inline::UnorderedList { text, level } => {
-                markdown.push_str(&format!("- {}{}", " ".repeat(level * 4), text))
-            }
-            Inline::Transclusion { tiddler } => markdown.push_str(&format!("![[{tiddler}]]")),
-            Inline::Table { rows } => markdown.push_str(&table_markdown(rows)),
-            Inline::EndOfText => (),
-        }
-    }
-
-    markdown
 }
 
 fn wrap(marker: &str, text: &str) -> String {
@@ -181,7 +116,7 @@ fn table_markdown(rows: &Vec<TableRow>) -> String {
     for (n, row) in rows.iter().enumerate() {
         let mut cell_widths = Vec::new();
         for cell in row.cells.iter() {
-            let cell_contents = convert_to_markdown(&cell.contents);
+            let cell_contents = Markdown::from_inlines(&cell.contents).to_string();
             let cell_contents = align_table_cell(cell.alignment.clone(), &cell_contents);
             is_header = n == 0 && cell.header;
 

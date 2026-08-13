@@ -25,6 +25,8 @@ const MARKERS: [&str; 16] = [
     "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "*", "#", "[img", "[[", "{{", "|",
 ];
 
+const MAX_INDENTS: usize = 7;
+
 fn italics(input: &mut &str) -> ModalResult<Inline> {
     let text = (literal("//"), take_until(0.., "//"), literal("//"))
         .parse_next(input)?
@@ -178,19 +180,23 @@ fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
-    // 1. Count the number of asterixs (1 to 6) to determine the list level
+    // Count the number of asterixs (1 to 6) to determine the list level
     let hashes: Vec<char> = repeat(1..=6, one_of('#')).parse_next(input)?;
     let level = hashes.len();
 
-    // 2. Consume the required trailing whitespace separating the # and the text
+    // Consume the required trailing whitespace separating the # and the text
     let _space = space1.parse_next(input)?;
 
-    // 3. Consume everything else on the line as the list item text
+    //  Consume everything else on the line as the list item text
     let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+
+    // Consume the end of line
+    line_ending.parse_next(input)?;
 
     Ok(Inline::OrderedList {
         level,
         text: text.to_string(),
+        numbering: Vec::new(),
     })
 }
 
@@ -678,9 +684,11 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
     debug!("Entering parse_wiki_text with: {}", input);
 
-    let inlines = repeat_till(0.., inline, eof)
+    let mut inlines = repeat_till(0.., inline, eof)
         .map(|v: (Vec<Inline>, _)| v)
         .parse_next(input)?;
+
+    number_ordered_lists(&mut inlines.0);
 
     Ok(inlines.0)
 }
@@ -691,6 +699,35 @@ fn trim_single_trailing_whitespace(mut s: String) -> String {
         s.pop();
     }
     s
+}
+
+// Number consecutive Inline::OrderedList items
+fn number_ordered_lists(inlines: &mut Vec<Inline>) {
+    let mut prev_numbering: Option<Vec<usize>> = None;
+
+    for inline in inlines.iter_mut() {
+        if let Inline::OrderedList {
+            level, numbering, ..
+        } = inline
+        {
+            match &prev_numbering {
+                None => {
+                    numbering.clear();
+                    (0..*level).for_each(|_| numbering.push(1));
+                }
+                Some(prev) => {
+                    numbering.clear();
+                    numbering.extend_from_slice(prev);
+                    // pad or trim to the current level before indexing
+                    numbering.resize(*level, 0);
+                    numbering[*level - 1] += 1;
+                }
+            }
+            prev_numbering = Some(numbering.clone());
+        } else {
+            prev_numbering = None;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1417,11 +1454,31 @@ mod tests {
 
         let expected = vec![
             Inline::plaintext("The following points:\n"),
-            Inline::ordered_list("The most important", 1),
-            Inline::plaintext("\n"),
-            Inline::ordered_list("Not so important", 1),
-            Inline::plaintext("\n"),
-            Inline::ordered_list("Why this is not important", 2),
+            Inline::ordered_list("The most important", 1, vec![1]),
+            Inline::ordered_list("Not so important", 1, vec![2]),
+            Inline::ordered_list("Why this is not important", 2, vec![2, 1]),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_ordered_list_numbering() {
+        let mut text = concat!(
+            "# first\n",
+            "# second\n",
+            "## subpoint1\n",
+            "## subpoint2\n",
+            "# third\n",
+        );
+        let v = parse_wiki_text(&mut text).unwrap();
+
+        let expected = vec![
+            Inline::ordered_list("first", 1, vec![1]),
+            Inline::ordered_list("second", 1, vec![2]),
+            Inline::ordered_list("subpoint1", 2, vec![2, 1]),
+            Inline::ordered_list("subpoint2", 2, vec![2, 2]),
+            Inline::ordered_list("third", 1, vec![3]),
         ];
 
         assert_eq!(v, expected);
@@ -1729,5 +1786,89 @@ mod tests {
 
         let input = "Minimal - CaM -  camel case link";
         assert_eq!(camel_case_link_position(input), Some(10));
+    }
+
+    #[test]
+    fn test_number_ordered_lists() {
+        // Happy path - simple one level list
+        let mut inlines = vec![
+            Inline::ordered_list("Point one", 1, Vec::new()),
+            Inline::ordered_list("Point two", 1, Vec::new()),
+            Inline::ordered_list("Point three", 1, Vec::new()),
+            Inline::ordered_list("Point four", 1, Vec::new()),
+        ];
+
+        let expected = vec![
+            Inline::ordered_list("Point one", 1, vec![1]),
+            Inline::ordered_list("Point two", 1, vec![2]),
+            Inline::ordered_list("Point three", 1, vec![3]),
+            Inline::ordered_list("Point four", 1, vec![4]),
+        ];
+
+        number_ordered_lists(&mut inlines);
+
+        assert_eq!(inlines, expected);
+
+        // Happy path - different levels
+        let mut inlines = vec![
+            Inline::ordered_list("Point one", 1, Vec::new()),
+            Inline::ordered_list("Point two", 1, Vec::new()),
+            Inline::ordered_list("Point three", 2, Vec::new()),
+            Inline::ordered_list("Point four", 2, Vec::new()),
+            Inline::ordered_list("Point three", 2, Vec::new()),
+            Inline::ordered_list("Point four", 1, Vec::new()),
+            Inline::ordered_list("Point three", 2, Vec::new()),
+            Inline::ordered_list("Point four", 3, Vec::new()),
+            Inline::ordered_list("Point three", 3, Vec::new()),
+            Inline::ordered_list("Point four", 2, Vec::new()),
+        ];
+
+        let expected = vec![
+            Inline::ordered_list("Point one", 1, vec![1]),
+            Inline::ordered_list("Point two", 1, vec![2]),
+            Inline::ordered_list("Point three", 2, vec![2, 1]),
+            Inline::ordered_list("Point four", 2, vec![2, 2]),
+            Inline::ordered_list("Point three", 2, vec![2, 3]),
+            Inline::ordered_list("Point four", 1, vec![3]),
+            Inline::ordered_list("Point three", 2, vec![3, 1]),
+            Inline::ordered_list("Point four", 3, vec![3, 1, 1]),
+            Inline::ordered_list("Point three", 3, vec![3, 1, 2]),
+            Inline::ordered_list("Point four", 2, vec![3, 2]),
+        ];
+
+        number_ordered_lists(&mut inlines);
+        assert_eq!(inlines, expected);
+
+        // Non consecutive lists
+        let mut inlines = vec![
+            Inline::ordered_list("Point one", 1, Vec::new()),
+            Inline::ordered_list("Point two", 1, Vec::new()),
+            Inline::ordered_list("Point three", 1, Vec::new()),
+            Inline::plaintext("A break"),
+            Inline::ordered_list("Point one again", 1, Vec::new()),
+            Inline::ordered_list("Point two again", 1, Vec::new()),
+            Inline::plaintext("A break"),
+            Inline::ordered_list("Point one yet again", 1, Vec::new()),
+            Inline::ordered_list("Point two yet again", 1, Vec::new()),
+            Inline::ordered_list("Subpoint", 2, Vec::new()),
+            Inline::ordered_list("Subpoint", 2, Vec::new()),
+        ];
+
+        let expected = vec![
+            Inline::ordered_list("Point one", 1, vec![1]),
+            Inline::ordered_list("Point two", 1, vec![2]),
+            Inline::ordered_list("Point three", 1, vec![3]),
+            Inline::plaintext("A break"),
+            Inline::ordered_list("Point one again", 1, vec![1]),
+            Inline::ordered_list("Point two again", 1, vec![2]),
+            Inline::plaintext("A break"),
+            Inline::ordered_list("Point one yet again", 1, vec![1]),
+            Inline::ordered_list("Point two yet again", 1, vec![2]),
+            Inline::ordered_list("Subpoint", 2, vec![2, 1]),
+            Inline::ordered_list("Subpoint", 2, vec![2, 2]),
+        ];
+
+        number_ordered_lists(&mut inlines);
+        assert_eq!(inlines, expected);
     }
 }
