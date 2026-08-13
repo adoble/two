@@ -53,7 +53,7 @@ pub enum Inline {
         external: bool,
     },
     OrderedList {
-        text: String,
+        //text: String,
         level: usize,
         numbering: Vec<usize>,
     },
@@ -242,12 +242,14 @@ impl Inline {
         }
     }
 
-    pub fn ordered_list(text: &str, level: usize, numbering: Vec<usize>) -> Inline {
-        Inline::OrderedList {
-            text: text.to_string(),
-            level,
-            numbering,
-        }
+    pub fn ordered_list(level: usize, numbering: &str) -> Inline {
+        let numbering: Vec<usize> = if !numbering.is_empty() {
+            numbering.split('.').map(|n| n.parse().unwrap()).collect()
+        } else {
+            Vec::new()
+        };
+
+        Inline::OrderedList { level, numbering }
     }
 
     pub fn unordered_list(text: &str, level: usize) -> Inline {
@@ -357,5 +359,50 @@ mod tests {
 
         let t = t.top().build();
         assert_eq!(t.alignment.vertical, CellVerticalAlignment::Top);
+    }
+
+    #[test]
+    fn test_ordered_list_helper() {
+        let inline = Inline::ordered_list(1, "");
+        assert_eq!(
+            inline,
+            Inline::OrderedList {
+                level: 1,
+                numbering: vec![]
+            }
+        );
+
+        let inline = Inline::ordered_list(1, "2");
+        assert_eq!(
+            inline,
+            Inline::OrderedList {
+                level: 1,
+                numbering: vec![2]
+            }
+        );
+
+        let inline = Inline::ordered_list(2, "2.2");
+        assert_eq!(
+            inline,
+            Inline::OrderedList {
+                level: 2,
+                numbering: vec![2, 2]
+            }
+        );
+
+        let inline = Inline::ordered_list(3, "1.2.3");
+        assert_eq!(
+            inline,
+            Inline::OrderedList {
+                level: 3,
+                numbering: vec![1, 2, 3]
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_ordered_list_helper_exception() {
+        let inline = Inline::ordered_list(2, "1.2.3");
     }
 }
