@@ -53,12 +53,10 @@ pub enum Inline {
         external: bool,
     },
     OrderedList {
-        //text: String,
         level: usize,
         numbering: Vec<usize>,
     },
     UnorderedList {
-        text: String,
         level: usize,
     },
     Transclusion {
@@ -252,11 +250,8 @@ impl Inline {
         Inline::OrderedList { level, numbering }
     }
 
-    pub fn unordered_list(text: &str, level: usize) -> Inline {
-        Inline::UnorderedList {
-            text: text.to_string(),
-            level,
-        }
+    pub fn unordered_list(level: usize) -> Inline {
+        Inline::UnorderedList { level }
     }
 
     pub fn transclusion(tiddler: &str) -> Inline {
@@ -266,12 +261,11 @@ impl Inline {
     }
 }
 
-// pub struct TableCell {
-//     pub inlines: Vec<Inline>,
-//     pub alignment: CellAlignment,
-//     pub header: bool,
-//     pub merge: CellMerge,
-// }
+impl TableRow {
+    pub fn new(cells: Vec<TableCell>) -> TableRow {
+        TableRow { cells }
+    }
+}
 impl TableCell {
     /// Helper function to create a simple table cell
     pub fn new(text: &str) -> TableCell {

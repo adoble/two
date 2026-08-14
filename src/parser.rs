@@ -170,13 +170,10 @@ fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
     // 2. Consume the required trailing whitespace separating the * and the text
     let _space = space1.parse_next(input)?;
 
-    // 3. Consume everything else on the line as the list item text
-    let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+    // // 3. Consume everything else on the line as the list item text
+    // let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
 
-    Ok(Inline::UnorderedList {
-        level,
-        text: text.to_string(),
-    })
+    Ok(Inline::UnorderedList { level })
 }
 
 fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
@@ -1408,7 +1405,7 @@ mod tests {
 
         let inline = r.unwrap();
 
-        assert_eq!(inline, Inline::unordered_list("List Level 1", 1));
+        assert_eq!(inline, Inline::unordered_list(1));
 
         let mut text = "*** List Level 3";
 
@@ -1418,7 +1415,7 @@ mod tests {
 
         let inline = r.unwrap();
 
-        assert_eq!(inline, Inline::unordered_list("List Level 3", 3));
+        assert_eq!(inline, Inline::unordered_list(3));
 
         let mut text = "****** List Level 6";
 
@@ -1428,7 +1425,7 @@ mod tests {
 
         let inline = r.unwrap();
 
-        assert_eq!(inline, Inline::unordered_list("List Level 6", 6));
+        assert_eq!(inline, Inline::unordered_list(6));
     }
 
     #[test]
@@ -1444,11 +1441,12 @@ mod tests {
 
         let expected = vec![
             Inline::plaintext("The following points:\n"),
-            Inline::unordered_list("The most important", 1),
-            Inline::plaintext("\n"),
-            Inline::unordered_list("Not so important", 1),
-            Inline::plaintext("\n"),
-            Inline::unordered_list("Why this is not important", 2),
+            Inline::unordered_list(1),
+            Inline::plaintext("The most important\n"),
+            Inline::unordered_list(1),
+            Inline::plaintext("Not so important\n"),
+            Inline::unordered_list(2),
+            Inline::plaintext("Why this is not important"),
         ];
 
         assert_eq!(v, expected);

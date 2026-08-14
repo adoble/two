@@ -3,7 +3,7 @@ use std::fmt::Display;
 /// Obsidian markdown generation
 ///
 ///
-use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableRow};
+use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableCell, TableRow};
 
 pub struct Markdown(String);
 
@@ -64,7 +64,7 @@ impl Markdown {
                     numbering[*level - 1].to_string()
                 )
             }
-            Inline::UnorderedList { text, level } => format!("- {}{}", " ".repeat(level * 4), text),
+            Inline::UnorderedList { level } => format!("{}- ", "\t".repeat(level - 1)),
             Inline::Transclusion { tiddler } => format!("![[{tiddler}]]"),
             Inline::Table { rows } => Self::format_table(rows),
             Inline::EndOfText => String::new(),
@@ -125,7 +125,6 @@ impl Markdown {
     fn format_table(rows: &Vec<TableRow>) -> String {
         let mut markdown = String::new();
 
-        let mut header = String::new();
         let mut is_header = false;
 
         for (n, row) in rows.iter().enumerate() {
@@ -158,9 +157,9 @@ impl Markdown {
 
     fn align_table_cell(alignment: CellAlignment, contents: &str) -> String {
         match alignment.horizontal {
-            CellHorizontalAlignment::Left => format!("{contents}  "),
-            CellHorizontalAlignment::Right => format!("  {contents}"),
-            CellHorizontalAlignment::Center => format!("  {contents}  "),
+            CellHorizontalAlignment::Left => format!("{contents} "),
+            CellHorizontalAlignment::Right => format!(" {contents}"),
+            CellHorizontalAlignment::Center => format!(" {contents} "),
         }
     }
 }
@@ -296,28 +295,88 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "To be done"]
     fn test_unordered_list() {
-        // let inlines = vec![
-        //     Inline::plaintext("The following points:\n"),
-        //     Inline::unordered_list(1),
-        //     Inline::plaintext("The most important\n"),
-        //     Inline::ordered_list(1, "2"),
-        //     Inline::plaintext("Not so important\n"),
-        //     Inline::ordered_list(2, "2.1"),
-        //     Inline::plaintext("Why this is not important"),
-        // ];
+        let inlines = vec![
+            Inline::plaintext("The following points:\n"),
+            Inline::unordered_list(1),
+            Inline::plaintext("The most important\n"),
+            Inline::unordered_list(1),
+            Inline::plaintext("Not so important\n"),
+            Inline::unordered_list(2),
+            Inline::plaintext("Why this is not important"),
+        ];
 
-        // let expected = concat!(
-        //     "The following points:\n",
-        //     "1. The most important\n",
-        //     "2. Not so important\n",
-        //     "\t1. Why this is not important"
-        // );
+        let expected = concat!(
+            "The following points:\n",
+            "- The most important\n",
+            "- Not so important\n",
+            "\t- Why this is not important"
+        );
 
-        // let markdown = Markdown::from_inlines(&inlines);
+        let markdown = Markdown::from_inlines(&inlines);
 
-        // let contents = markdown.to_string();
-        // assert_eq!(contents, expected);
+        let contents = markdown.to_string();
+        assert_eq!(contents, expected);
+    }
+
+    #[test]
+    fn test_transclusion() {
+        let inlines = vec![Inline::transclusion("link")];
+
+        let expected = "![[link]]";
+
+        let markdown = Markdown::from_inlines(&inlines);
+
+        let contents = markdown.to_string();
+        assert_eq!(contents, expected);
+    }
+
+    #[test]
+    fn test_table() {
+        //     Table {
+        //     rows: Vec<TableRow>,
+        // }
+        let row1: Vec<TableCell> = vec![
+            TableCell::new("Column 1").header().center().build(),
+            TableCell::new("Column 2").header().center().build(),
+            TableCell::new("Column 3").header().center().build(),
+        ];
+
+        let row2: Vec<TableCell> = vec![
+            TableCell::new("left").left().build(),
+            TableCell::new("center").center().build(),
+            TableCell::new("right").right().build(),
+        ];
+
+        let row3: Vec<TableCell> = vec![
+            TableCell::new_with_inlines(vec![Inline::bold("bold")])
+                .center()
+                .build(),
+            TableCell::new_with_inlines(vec![Inline::italics("italic")])
+                .center()
+                .build(),
+            TableCell::new_with_inlines(vec![Inline::link("link", "")])
+                .center()
+                .build(),
+        ];
+
+        let rows: Vec<TableRow> = vec![
+            TableRow::new(row1),
+            TableRow::new(row2),
+            TableRow::new(row3),
+        ];
+        let inlines = vec![Inline::Table { rows }];
+
+        let expected = concat!(
+            "| Column 1 | Column 2 | Column 3 |\n",
+            "| -- |\n",
+            "|left | center | right|\n",
+            "| **bold** | __italic__ | [[link]] |\n",
+        );
+
+        let markdown = Markdown::from_inlines(&inlines);
+
+        let contents = markdown.to_string();
+        assert_eq!(contents, expected);
     }
 }
