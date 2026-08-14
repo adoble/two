@@ -57,7 +57,13 @@ impl Markdown {
                 external,
             } => Self::format_link(link, display_text, external),
 
-            Inline::OrderedList { level, numbering } => todo!(),
+            Inline::OrderedList { level, numbering } => {
+                format!(
+                    "{}{}. ",
+                    "\t".repeat(*level - 1),
+                    numbering[*level - 1].to_string()
+                )
+            }
             Inline::UnorderedList { text, level } => format!("- {}{}", " ".repeat(level * 4), text),
             Inline::Transclusion { tiddler } => format!("![[{tiddler}]]"),
             Inline::Table { rows } => Self::format_table(rows),
@@ -167,6 +173,8 @@ impl Display for Markdown {
 
 #[cfg(test)]
 mod tests {
+    use crate::markdown;
+
     use super::*;
     use pretty_assertions::assert_eq;
 
@@ -263,6 +271,53 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO"]
-    fn test_ordered_list() {}
+    fn test_ordered_list() {
+        let inlines = vec![
+            Inline::plaintext("The following points:\n"),
+            Inline::ordered_list(1, "1"),
+            Inline::plaintext("The most important\n"),
+            Inline::ordered_list(1, "2"),
+            Inline::plaintext("Not so important\n"),
+            Inline::ordered_list(2, "2.1"),
+            Inline::plaintext("Why this is not important"),
+        ];
+
+        let expected = concat!(
+            "The following points:\n",
+            "1. The most important\n",
+            "2. Not so important\n",
+            "\t1. Why this is not important"
+        );
+
+        let markdown = Markdown::from_inlines(&inlines);
+
+        let contents = markdown.to_string();
+        assert_eq!(contents, expected);
+    }
+
+    #[test]
+    #[ignore = "To be done"]
+    fn test_unordered_list() {
+        // let inlines = vec![
+        //     Inline::plaintext("The following points:\n"),
+        //     Inline::unordered_list(1),
+        //     Inline::plaintext("The most important\n"),
+        //     Inline::ordered_list(1, "2"),
+        //     Inline::plaintext("Not so important\n"),
+        //     Inline::ordered_list(2, "2.1"),
+        //     Inline::plaintext("Why this is not important"),
+        // ];
+
+        // let expected = concat!(
+        //     "The following points:\n",
+        //     "1. The most important\n",
+        //     "2. Not so important\n",
+        //     "\t1. Why this is not important"
+        // );
+
+        // let markdown = Markdown::from_inlines(&inlines);
+
+        // let contents = markdown.to_string();
+        // assert_eq!(contents, expected);
+    }
 }
