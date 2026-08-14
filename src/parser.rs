@@ -707,29 +707,44 @@ fn number_ordered_lists(inlines: &mut Vec<Inline>) {
     let mut inbetweens = String::new();
 
     for inline in inlines.iter_mut() {
-        if let Inline::OrderedList {
-            level, numbering, ..
-        } = inline
-        {
-            match &prev_numbering {
-                None => {
-                    numbering.clear();
-                    (0..*level).for_each(|_| numbering.push(1));
+        match inline {
+            Inline::OrderedList { level, numbering } => {
+                match &prev_numbering {
+                    None => {
+                        numbering.clear();
+                        (0..*level).for_each(|_| numbering.push(1));
+                    }
+                    Some(prev) => {
+                        numbering.clear();
+                        numbering.extend_from_slice(prev);
+                        // pad or trim to the current level before indexing
+                        numbering.resize(*level, 0);
+                        numbering[*level - 1] += 1;
+                    }
                 }
-                Some(prev) => {
-                    numbering.clear();
-                    numbering.extend_from_slice(prev);
-                    // pad or trim to the current level before indexing
-                    numbering.resize(*level, 0);
-                    numbering[*level - 1] += 1;
+                prev_numbering = Some(numbering.clone());
+                inbetweens.clear();
+            }
+            Inline::PlainText { text }
+            | Inline::Bold { text }
+            | Inline::Italics { text }
+            | Inline::Underlined { text }
+            | Inline::Superscript { text }
+            | Inline::Subscript { text }
+            | Inline::Strikethrough { text }
+            | Inline::Code { text }
+            | Inline::Highlight { text } => {
+                // Count line breaks in the inlines between the ordered list entries. If there are more
+                //  then one then reset the counting
+                inbetweens.push_str(text);
+                if inbetweens.matches('\n').count() > 1 {
+                    prev_numbering = None;
+                    inbetweens.clear();
                 }
             }
-            prev_numbering = Some(numbering.clone());
-        } else {
-            // count line breaks in the inlines between the ordered list entries. If there are more
-            //  then one then reset the counting
-
-            prev_numbering = None;
+            // A link has no \n
+            Inline::Link { .. } => (),
+            _ => prev_numbering = None,
         }
     }
 }
@@ -1822,7 +1837,7 @@ mod tests {
             Inline::ordered_list(1, "3"),
             Inline::plaintext("Point three\n"),
             Inline::ordered_list(1, "4"),
-            Inline::plaintext("Point four\n"),
+            Inline::plaintext("Point four"),
         ];
 
         number_ordered_lists(&mut inlines);
@@ -1832,25 +1847,29 @@ mod tests {
         // Happy path - different levels
         let mut inlines = vec![
             Inline::ordered_list(1, ""),
-            Inline::plaintext("Point one"),
+            Inline::plaintext("Point one\n"),
             Inline::ordered_list(1, ""),
-            Inline::plaintext("Point two"),
+            Inline::plaintext("Point two\n"),
             Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint1"),
+            Inline::plaintext("Subpoint1\n"),
             Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint2"),
+            Inline::plaintext("Subpoint2\n"),
             Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint3"),
+            Inline::plaintext("Subpoint3\n"),
             Inline::ordered_list(1, ""),
             Inline::plaintext("Point four"),
+            Inline::bold("with emphasis"),
+            Inline::plaintext("\n"),
             Inline::ordered_list(2, ""),
-            Inline::plaintext("Another subpoint1"),
+            Inline::plaintext("Another subpoint1\n"),
             Inline::ordered_list(3, ""),
-            Inline::plaintext("A minor point"),
+            Inline::plaintext("A minor point with a "),
+            Inline::link("link", ""),
+            Inline::plaintext("\n"),
             Inline::ordered_list(3, ""),
-            Inline::plaintext("Level 3"),
+            Inline::plaintext("Level 3\n"),
             Inline::ordered_list(2, ""),
-            Inline::plaintext("Another subpoint2"),
+            Inline::plaintext("Another subpoint2\n"),
         ];
 
         let expected = vec![
@@ -1865,7 +1884,7 @@ mod tests {
             Inline::ordered_list(2, "2.3"),
             Inline::plaintext("Subpoint3\n"),
             Inline::ordered_list(1, "3"),
-            Inline::plaintext("Point "),
+            Inline::plaintext("Point four"),
             Inline::bold("with emphasis"),
             Inline::plaintext("\n"),
             Inline::ordered_list(2, "3.1"),
