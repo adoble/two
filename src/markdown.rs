@@ -178,12 +178,6 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    #[ignore = "To be done"]
-    fn test_from_inlines() {
-        assert!(true)
-    }
-
-    #[test]
     fn test_from_formatting_inline() {
         let test_vector = vec![
             (Inline::plaintext("Test text"), "Test text"),
