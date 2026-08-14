@@ -187,12 +187,6 @@ fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
     // Consume the required trailing whitespace separating the # and the text
     let _space = space1.parse_next(input)?;
 
-    //  Consume everything else on the line as the list item text
-    //let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
-
-    // Consume the end of line
-    line_ending.parse_next(input)?;
-
     Ok(Inline::OrderedList {
         level,
         //  text: text.to_string(),

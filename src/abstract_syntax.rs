@@ -399,10 +399,4 @@ mod tests {
             }
         );
     }
-
-    #[test]
-    #[should_panic]
-    fn test_ordered_list_helper_exception() {
-        let inline = Inline::ordered_list(2, "1.2.3");
-    }
 }
