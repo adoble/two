@@ -61,18 +61,15 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     // Parse the tiddler text
     let mut input = tiddler.text.as_str();
     let ast = parse_wiki_text(&mut input).unwrap();
-    let markdown = Markdown::from_inlines(&ast);
-
-    todo!("TODO write out the markdown to the files");
+    let markdown = Markdown::from_inlines(&ast).to_string();
 
     // let mut file = OpenOptions::new()
     //     .append(true)
     //     .open(file_name)
     //     .expect("cannot open file");
-    let mut file = File::create(file_name).expect("Could not crate file");
+    let mut file = File::create(file_name).expect("Could not create file!");
 
-    file.write_all(tiddler.text.as_bytes())
-        .expect("write failed");
+    file.write_all(markdown.as_bytes()).expect("write failed");
 
     Ok(())
 }
