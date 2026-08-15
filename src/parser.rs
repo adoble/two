@@ -580,14 +580,16 @@ fn camel_case_link(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
-// one "hump": an uppercase letter followed by 1+ lowercase/digit chars
+// one "hump": 1+ uppercase letters followed by 1+ lowercase/digit chars
 fn hump<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
-    (
-        take_while(1, |c: char| c.is_ascii_uppercase()),
+    let s = (
+        take_while(1.., |c: char| c.is_ascii_uppercase()),
         take_while(1.., |c: char| c.is_ascii_lowercase() || c.is_ascii_digit()),
     )
         .take()
-        .parse_next(input)
+        .parse_next(input)?;
+
+    Ok(s)
 }
 
 fn dimensions(input: &mut &str) -> ModalResult<Dimensions> {
@@ -1337,6 +1339,19 @@ mod tests {
             Inline::Link {
                 display_text: None,
                 link: "CamelCaseAgain".to_string(),
+                external: false,
+            }
+        );
+
+        let mut text = "CCCamelCase";
+
+        let inline = camel_case_link(&mut text).unwrap();
+
+        assert_eq!(
+            inline,
+            Inline::Link {
+                display_text: None,
+                link: "CCCamelCase".to_string(),
                 external: false,
             }
         );
