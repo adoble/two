@@ -164,11 +164,11 @@ fn heading(input: &mut &str) -> ModalResult<Inline> {
 
 fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
     // 1. Count the number of asterixs (1 to 6) to determine the list level
-    let hashes: Vec<char> = repeat(1..=6, one_of('*')).parse_next(input)?;
-    let level = hashes.len();
+    let asterixes: Vec<char> = repeat(1..=6, one_of('*')).parse_next(input)?;
+    let level = asterixes.len();
 
-    // 2. Consume the required trailing whitespace separating the * and the text
-    let _space = space1.parse_next(input)?;
+    // 2. Consume any whitespace separating the * and the text
+    let _space = opt(space1).parse_next(input)?;
 
     // // 3. Consume everything else on the line as the list item text
     // let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
@@ -345,8 +345,6 @@ fn starts_with_capital(word: &str) -> bool {
 // }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    debug!("Entering table_cell parser with: {}", input);
-
     let (alignment, leading_spaces, header, contents, _) = seq!(
         opt(vertical_alignment),
         space0,
@@ -356,14 +354,6 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
         take(1usize) // remove the trailng '|'
     )
     .parse_next(input)?;
-
-    debug!(
-        "alignment = {:?}, leading_spaces = {:?}, header = {:?}, contents = {:?}",
-        alignment.clone(),
-        leading_spaces,
-        header,
-        contents
-    );
 
     // Parse the contents and convert into Inline(s) by recursively calling this.
     let s = contents.to_owned();
@@ -420,8 +410,6 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
 pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
     let mut inlines = Vec::<Inline>::new();
 
-    debug!("Entering parse_table_cell_contents with: {}", input);
-
     while !input.is_empty() {
         let (characters, inline) = repeat_till(0.., any, alt((formatting, link, image, plaintext)))
             .map(|v: (Vec<char>, Inline)| v)
@@ -429,14 +417,11 @@ pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
 
         let s: String = characters.into_iter().collect();
 
-        debug!("parse_table_cell_contents s={}", s);
-
         // Sometimes a parser produces an empty plain text entry.
         // Filter these out
         if !s.is_empty() {
             inlines.push(Inline::PlainText { text: s });
         };
-        debug!("parse_table_cell_contents inlines: {:?}", inlines);
 
         // Filter out end of text as not needed
         if inline != Inline::EndOfText {
@@ -448,14 +433,10 @@ pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
 }
 
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
-    // debug!("Entering table_row parser with :  {}", input);
-
     "|".parse_next(input)?;
     let cells = repeat_till(1.., table_cell, alt((line_ending, eof)))
         .map(|v: (Vec<TableCell>, &str)| v.0)
         .parse_next(input)?;
-
-    // debug!("Table row cells:  {:?}", cells);
 
     Ok(TableRow { cells })
 }
@@ -675,8 +656,6 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
 }
 
 pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    debug!("Entering parse_wiki_text with: {}", input);
-
     let mut inlines = repeat_till(0.., inline, eof)
         .map(|v: (Vec<Inline>, _)| v)
         .parse_next(input)?;
@@ -1441,6 +1420,13 @@ mod tests {
         let inline = r.unwrap();
 
         assert_eq!(inline, Inline::unordered_list(6));
+
+        // In tiddywiki there does not need to be a space between the asterix and the text
+        let mut text = "*list point";
+        let r = unordered_list(&mut text);
+        assert!(r.is_ok());
+        let inline = r.unwrap();
+        assert_eq!(inline, Inline::unordered_list(1));
     }
 
     #[test]
@@ -1449,7 +1435,8 @@ mod tests {
             "The following points:\n",
             "* The most important\n",
             "* Not so important\n",
-            "** Why this is not important"
+            "** Why this is not important",
+            "*No intervening spaces",
         );
 
         let v = parse_wiki_text(&mut text).unwrap();
@@ -1462,6 +1449,8 @@ mod tests {
             Inline::plaintext("Not so important\n"),
             Inline::unordered_list(2),
             Inline::plaintext("Why this is not important"),
+            Inline::unordered_list(1),
+            Inline::plaintext("No intervening spaces"),
         ];
 
         assert_eq!(v, expected);

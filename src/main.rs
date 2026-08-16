@@ -39,8 +39,6 @@ fn main() {
         .filter(|t| !t.title.starts_with("$:/"))
         .collect();
 
-    println!("len: {}", filtered_tiddlers.len());
-
     for tiddler in filtered_tiddlers {
         create_tiddler_file(tiddler).unwrap();
     }

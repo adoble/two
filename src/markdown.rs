@@ -1,9 +1,12 @@
-use std::fmt::Display;
+use std::{cell, fmt::Display};
 
 /// Obsidian markdown generation
 ///
 ///
 use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableCell, TableRow};
+
+#[allow(unused_imports)]
+use log::{debug, error, info, log_enabled};
 
 pub struct Markdown(String);
 
@@ -127,15 +130,18 @@ impl Markdown {
 
         let mut is_header = false;
 
+        type CellWidth = usize;
+        let mut col_properties: Vec<(CellWidth, CellHorizontalAlignment)> = Vec::new();
         for (n, row) in rows.iter().enumerate() {
-            let mut cell_widths = Vec::new();
             for cell in row.cells.iter() {
                 let cell_contents = Self::from_inlines(&cell.contents).to_string();
                 let cell_contents = Self::align_table_cell(cell.alignment.clone(), &cell_contents);
                 is_header = n == 0 && cell.header;
 
                 if is_header {
-                    cell_widths.push(cell.contents.len());
+                    // All column  properieties in Obsidian markdown are defined in the header.
+                    // TiddlyWiki however defines the properties per cell meaning that information is lost.
+                    col_properties.push((cell_contents.len(), cell.alignment.horizontal.clone()));
                 };
                 markdown.push_str(&format!("|{cell_contents}"));
             }
@@ -143,10 +149,34 @@ impl Markdown {
 
             if is_header {
                 // Add a seperate line with the underlining, e.g
-                // | ------ | ------ |
-                let header_line = cell_widths.iter().fold(String::new(), |s, &w| {
-                    format!("| {} ", "-".repeat(w.max(2)))
+                // `| ------ | ------ |`
+                // Note that Obsidian only has column alignments (not per cells as in TiddlyWiki) so use the
+                // alignment of the header for the column alignment
+
+                let header_line = col_properties.iter().fold(String::new(), |mut acc, prop| {
+                    let (left_alignment_marker, right_alignment_marker) = match prop.1 {
+                        CellHorizontalAlignment::Left => (":", ""),
+                        CellHorizontalAlignment::Right => ("", ":"),
+                        CellHorizontalAlignment::Center => (":", ":"),
+                    };
+
+                    let s = format!(
+                        "| {}{}{} ",
+                        left_alignment_marker,
+                        "-".repeat(
+                            (prop.0
+                                - left_alignment_marker.len()
+                                - right_alignment_marker.len()
+                                - 2)
+                            .max(2)
+                        ),
+                        right_alignment_marker
+                    );
+                    acc.push_str(&s);
+                    acc
                 });
+
+                debug!("{}", &header_line);
                 markdown.push_str(&header_line);
                 markdown.push_str("|\n");
                 is_header = false;
@@ -331,9 +361,9 @@ mod tests {
         //     rows: Vec<TableRow>,
         // }
         let row1: Vec<TableCell> = vec![
-            TableCell::new("Column 1").header().center().build(),
+            TableCell::new("Column one").header().left().build(),
             TableCell::new("Column 2").header().center().build(),
-            TableCell::new("Column 3").header().center().build(),
+            TableCell::new("Column three").header().right().build(),
         ];
 
         let row2: Vec<TableCell> = vec![
@@ -362,8 +392,8 @@ mod tests {
         let inlines = vec![Inline::Table { rows }];
 
         let expected = concat!(
-            "| Column 1 | Column 2 | Column 3 |\n",
-            "| -- |\n",
+            "|Column one | Column 2 | Column three|\n",
+            "| :-------- | :------: | ----------: |\n",
             "|left | center | right|\n",
             "| **bold** | __italic__ | [[link]] |\n",
         );
