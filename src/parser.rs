@@ -4,7 +4,9 @@
 use winnow::{
     ModalResult, Parser,
     ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1},
-    combinator::{alt, delimited, eof, fail, opt, preceded, repeat, repeat_till, separated, seq},
+    combinator::{
+        alt, delimited, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq, trace,
+    },
     error::{ContextError, ErrMode},
     stream::AsChar,
     token::{any, literal, one_of, take, take_till, take_until, take_while},
@@ -21,8 +23,9 @@ use crate::abstract_syntax::{
     TableCell, TableRow,
 };
 
-const MARKERS: [&str; 16] = [
-    "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "!", "*", "#", "[img", "[[", "{{", "|",
+const MARKERS: [&str; 17] = [
+    "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "*", "#", "[img", "[[", "{{", "|",
+    "[ext[", "!",
 ];
 
 const MAX_INDENTS: usize = 7;
@@ -146,7 +149,8 @@ fn codeblock(input: &mut &str) -> ModalResult<Inline> {
 
 fn heading(input: &mut &str) -> ModalResult<Inline> {
     // 1. Count the number of hashes (1 to 6) to determine the heading level
-    let hashes: Vec<char> = repeat(1..=6, one_of('!')).parse_next(input)?;
+    //let hashes: Vec<char> = repeat(1..=6, one_of('!')).parse_next(input)?;
+    let hashes: Vec<char> = repeat(1..=6, '!').parse_next(input)?;
     let level = hashes.len();
 
     // 2. Consume the required trailing whitespace separating the # and the text
@@ -244,7 +248,32 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
         .flatten()
         .min()
         .unwrap_or(input.len());
-    let (text, rest) = input.split_at(end);
+
+    let (mut text, mut rest) = input.split_at(end);
+
+    if text.is_empty() {
+        // This is due to the marker being at the beginning of the input. However,
+        // if the  input after the marker is not an inline (i.e. the marker should
+        // be treated as plaintext) then this leads to the plaintext parser being
+        // always being called on the same text leading to an infinite loop (the repeat
+        // paser that calls this will abort before though).
+        // Approach to solve this is to peek ahead to see if this marker is NOT an
+        // inline and then treat the marker as plaintext.
+
+        if let Err(_) = peek(inline).parse_next(&mut rest) {
+            let marker = input.chars().next().unwrap();
+            // Move the input one along
+            match rest.char_indices().nth(1) {
+                Some((byte_index, _)) => *input = &rest[byte_index..],
+                None => *input = "",
+            };
+
+            return Ok(Inline::PlainText {
+                text: marker.into(),
+            });
+        }
+    };
+
     *input = rest;
 
     Ok(Inline::PlainText { text: text.into() })
@@ -304,45 +333,6 @@ fn camel_case_link_position(input: &str) -> Option<usize> {
 fn starts_with_capital(word: &str) -> bool {
     word.chars().next().is_some_and(|c| c.is_uppercase())
 }
-
-// fn camel_case_link_start(input: &str) -> Option<usize> {
-//     let candidate_start = input.find(|c: char| c.is_uppercase());
-
-//     match candidate_start {
-//         // First capital letter is at the end of the input so cannot be a camel case link
-//         Some(start) if start == input.len() - 1 => None,
-
-//         // Capital letter found. Look for another before a white space occurs
-//         Some(start) => {
-//             let rest: String = input[start..]
-//                 .chars()
-//                 .peekable()
-//                 .take_while(|c| !c.is_whitespace())
-//                 .collect();
-//             //.
-//             if rest.find(|c: char| c.is_uppercase()).is_some() {
-//                 Some(start)
-//             } else {
-//                 None
-//             }
-//         }
-
-//         // No captial letter found therefore not a camel case link
-//         None => None,
-//     }
-// }
-
-// #[deprecated]
-// fn table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
-//     let v = repeat(0.., alt((formatting, link, image, plaintext)))
-//         .fold(Vec::new, |mut acc: Vec<_>, item| {
-//             acc.push(item);
-//             acc
-//         })
-//         .parse_next(input)?;
-
-//     Ok(v)
-// }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     let (alignment, leading_spaces, header, contents, _) = seq!(
@@ -486,7 +476,7 @@ fn image(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn link(input: &mut &str) -> ModalResult<Inline> {
-    let link = alt((camel_case_link, simple_link, external_link)).parse_next(input)?;
+    let link = alt((camel_case_link, external_link, simple_link)).parse_next(input)?;
 
     Ok(link)
 }
@@ -650,13 +640,17 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
         image,
         formatting,
         table,
-        plaintext, // Has to be at the end as this parser is the least specific.
     ))
     .parse_next(input)
 }
 
-pub fn parse_wiki_text(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    let mut inlines = repeat_till(0.., inline, eof)
+fn wiki_text(input: &mut &str) -> ModalResult<Inline> {
+    alt((inline, plaintext)).parse_next(input)
+}
+
+pub fn parse_tiddler(input: &mut &str) -> ModalResult<Vec<Inline>> {
+    //let mut inlines = repeat_till(0.., inline, eof)
+    let mut inlines = repeat_till(0.., wiki_text, eof)
         .map(|v: (Vec<Inline>, _)| v)
         .parse_next(input)?;
 
@@ -736,7 +730,7 @@ mod tests {
     #[test]
     fn test_italics() {
         let mut text = "This is some text that //has italics// in the middle.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -755,7 +749,7 @@ mod tests {
     #[test]
     fn test_bold() {
         let mut text = "Text that has ''bold text'' in it.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -781,7 +775,7 @@ mod tests {
     fn test_bold_and_italics() {
         let mut text =
             "Some text with a mixture of //italicised text// and also ''some bold text'' in it.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -812,7 +806,7 @@ mod tests {
     #[test]
     fn test_underlined() {
         let mut text = "This is __some underlined text__.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -831,7 +825,7 @@ mod tests {
     #[test]
     fn test_superscript() {
         let mut text = "This contains superscripted text as in y = x^^2^^.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -850,7 +844,7 @@ mod tests {
     #[test]
     fn test_strikethrough() {
         let mut text = "This ~~is correct~~ is wrong.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -869,7 +863,7 @@ mod tests {
     #[test]
     fn test_code() {
         let mut text = "This `variable` is set to 0.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -888,7 +882,7 @@ mod tests {
     #[test]
     fn test_highlight() {
         let mut text = "@@Important point@@ should be noted.";
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -939,7 +933,7 @@ mod tests {
             "<<< Aristotle"
         );
 
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -966,7 +960,7 @@ mod tests {
             "<<< "
         );
 
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -997,7 +991,7 @@ mod tests {
             "<<< Isaac Asimov"
         );
 
-        let r = parse_wiki_text(&mut text);
+        let r = parse_tiddler(&mut text);
 
         assert!(r.is_ok());
 
@@ -1031,6 +1025,22 @@ mod tests {
 
         assert_eq!(inline, Inline::codeblock(expected_code, "rust"));
     }
+    #[test]
+    fn test_code_block_direct_without_language() {
+        let expected_code = concat!(">cd dir\nls -a\n",);
+
+        let mut text = String::from("```\n");
+        text.push_str(expected_code);
+        text.push_str("```");
+
+        let r = codeblock(&mut text.as_str());
+
+        assert!(r.is_ok());
+
+        let inline = r.unwrap();
+
+        assert_eq!(inline, Inline::codeblock(expected_code, ""));
+    }
 
     #[test]
     fn test_code_block() {
@@ -1041,7 +1051,7 @@ mod tests {
         text.push_str(expected_code);
         text.push_str("```\n");
 
-        let r = parse_wiki_text(&mut text.as_str());
+        let r = parse_tiddler(&mut text.as_str());
 
         assert!(r.is_ok());
 
@@ -1099,10 +1109,17 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
+    fn test_heading_random_exclamation_mark() {
+        let mut text = "macro!()";
+        let _h = heading(&mut text).unwrap();
+    }
+
+    #[test]
     fn test_heading() {
         let mut text = "!! The End!\nBody text.";
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected: Vec<Inline> = vec![
             Inline::heading("The End!", 2),
@@ -1116,7 +1133,7 @@ mod tests {
     fn test_heading_with_leading_spaces() {
         let mut text = "   !! The End!\nBody text.";
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected: Vec<Inline> = vec![
             Inline::plaintext("   "),
@@ -1214,7 +1231,7 @@ mod tests {
     fn test_image() {
         let mut text = "This is a picture [img width=32 height=20 [A Caption|my picture.jpg]] that is green coloured.";
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::plaintext("This is a picture "),
@@ -1247,7 +1264,7 @@ mod tests {
     fn test_mixed_links() {
         let mut input =
             "This is an inline [[link]] with some more text and [[another link|new link]]";
-        let v = parse_wiki_text(&mut input).unwrap();
+        let v = parse_tiddler(&mut input).unwrap();
 
         let expect = vec![
             Inline::plaintext("This is an inline "),
@@ -1262,22 +1279,30 @@ mod tests {
     #[test]
     fn test_external_link_direct() {
         let mut text = "[ext[An external Link]]";
-
         let v = link(&mut text).unwrap();
-
         assert_eq!(v, Inline::ext_link("An external Link", ""));
 
         let mut text = "[ext[Article|http://pub.com/article]]";
-
         let v = link(&mut text).unwrap();
-
         assert_eq!(v, Inline::ext_link("http://pub.com/article", "Article"));
 
-        let mut text = "[[http://example.com]]";
-
+        let mut text = "[ext[fill_env|https://github.com/rust-lang/cargo/blob/0.33.0/src/cargo/core/compiler/compilation.rs#L171-L239]]";
         let v = link(&mut text).unwrap();
+        assert_eq!(
+            v,
+            Inline::ext_link(
+                "https://github.com/rust-lang/cargo/blob/0.33.0/src/cargo/core/compiler/compilation.rs#L171-L239",
+                "fill_env"
+            )
+        );
 
+        let mut text = "[[http://example.com]]";
+        let v = link(&mut text).unwrap();
         assert_eq!(v, Inline::ext_link("http://example.com", ""));
+
+        let mut text = "[[https://example.com]]";
+        let v = link(&mut text).unwrap();
+        assert_eq!(v, Inline::ext_link("https://example.com", ""));
     }
 
     #[test]
@@ -1341,7 +1366,7 @@ mod tests {
         let mut text =
             "A key capability of WikiText is the ability to make links, even CamelCaseLinks.";
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::plaintext("A key capability of "),
@@ -1358,7 +1383,7 @@ mod tests {
     fn test_links_embedded() {
         let mut input = "This is some [[link]] in the middle of text followed by [[another link]].\n//italics//";
 
-        let l = parse_wiki_text(&mut input).unwrap();
+        let l = parse_tiddler(&mut input).unwrap();
 
         let expectations = vec![
             Inline::plaintext("This is some "),
@@ -1376,7 +1401,7 @@ mod tests {
     fn test_parse_wiki_text() {
         let mut text = "Hello world\n ''bold''";
 
-        let inlines = parse_wiki_text(&mut text).unwrap();
+        let inlines = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::PlainText {
@@ -1439,7 +1464,7 @@ mod tests {
             "*No intervening spaces",
         );
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::plaintext("The following points:\n"),
@@ -1465,7 +1490,7 @@ mod tests {
             "## Why this is not important"
         );
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::plaintext("The following points:\n"),
@@ -1489,7 +1514,7 @@ mod tests {
             "## subpoint2\n",
             "# third\n",
         );
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::ordered_list(1, "1"),
@@ -1516,7 +1541,7 @@ mod tests {
             "{{Avoid}}"
         );
 
-        let v = parse_wiki_text(&mut text).unwrap();
+        let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
             Inline::heading("How to do it", 1),
@@ -1768,7 +1793,7 @@ mod tests {
     fn test_table_in_situ() {
         let mut text = "This is some text with a [[link]] followed by a table:\n|!Left | !Middle | !Right|\n|^top left |^ top center |^ top right|\n|middle left | middle center | middle right|\n|,bottom left |, bottom center |, bottom right|";
 
-        let inlines = parse_wiki_text(&mut text).unwrap();
+        let inlines = parse_tiddler(&mut text).unwrap();
 
         //assert_eq!(inlines.len(), 4);
         assert_eq!(inlines[0], Inline::plaintext("This is some text with a "));
@@ -1947,5 +1972,12 @@ mod tests {
 
         number_ordered_lists(&mut inlines);
         assert_eq!(inlines, expected);
+    }
+
+    #[test]
+    fn test_problem_tiddler() {
+        let mut input = include_str!("../test_resources/problem-tiddler.tw");
+
+        let _inlines = parse_tiddler(&mut input).unwrap();
     }
 }

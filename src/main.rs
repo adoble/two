@@ -13,7 +13,7 @@ use markdown::Markdown;
 use log::{debug, error, info, log_enabled};
 
 use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableRow};
-use crate::parser::parse_wiki_text;
+use crate::parser::parse_tiddler;
 
 mod parser;
 
@@ -24,7 +24,8 @@ fn main() {
 
     info!("TiddlyWiki to Obsidian");
 
-    let mut tw_file = File::open("./tiddlywiki/empty.html").unwrap();
+    //let mut tw_file = File::open("./tiddlywiki/empty.html").unwrap();
+    let mut tw_file = File::open("/home/andrew/Downloads/SoftwareTools.html").unwrap();
     let mut tw_string = String::new();
     tw_file.read_to_string(&mut tw_string).unwrap();
 
@@ -54,11 +55,12 @@ fn extract_tiddler_json(html: &str) -> Option<&str> {
 
 fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     // TODO file name from cli
+    info!("Generating: {}", tiddler.title);
     let file_name = format!("./output/{}.md", tiddler.title);
 
     // Parse the tiddler text
     let mut input = tiddler.text.as_str();
-    let ast = parse_wiki_text(&mut input).unwrap();
+    let ast = parse_tiddler(&mut input).unwrap();
     let markdown = Markdown::from_inlines(&ast).to_string();
 
     // let mut file = OpenOptions::new()

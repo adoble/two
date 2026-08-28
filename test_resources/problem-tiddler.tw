@@ -1,0 +1,48 @@
+
+<<<
+Source:: https://stackoverflow.com/questions/27840394/how-can-a-rust-program-access-metadata-from-its-cargo-package
+<<<
+
+
+Cargo passes some metadata to the compiler through environment variables, a list of which can be found in the [ext[Cargo documentation pages|http://doc.crates.io/environment-variables.html]].
+
+The compiler environment is populated by [ext[fill_env|https://github.com/rust-lang/cargo/blob/0.33.0/src/cargo/core/compiler/compilation.rs#L171-L239]] in Cargo's code. This code has become more complex since earlier versions, and the entire list of variables is no longer obvious from it because it can be dynamic. However, at least the following variables are set there (from the list in the docs):
+
+
+```
+CARGO_MANIFEST_DIR
+CARGO_PKG_AUTHORS
+CARGO_PKG_DESCRIPTION
+CARGO_PKG_HOMEPAGE
+CARGO_PKG_NAME
+CARGO_PKG_REPOSITORY
+CARGO_PKG_VERSION
+CARGO_PKG_VERSION_MAJOR
+CARGO_PKG_VERSION_MINOR
+CARGO_PKG_VERSION_PATCH
+CARGO_PKG_VERSION_PRE
+```
+
+
+You can access environment variables using the env!() macro. To insert the version number of your program you can do this:
+
+
+```rust
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// ...
+
+println!("MyProgram v{}", VERSION);
+```
+
+
+If you want your program to compile even without Cargo, you can use `option_env!()`:
+
+
+```rust
+const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
+
+// ...
+
+println!("MyProgram v{}", VERSION.unwrap_or("unknown"));
+```
