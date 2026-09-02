@@ -5,7 +5,7 @@ use winnow::{
     ModalResult, Parser,
     ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1},
     combinator::{
-        alt, delimited, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq, trace,
+        alt, delimited, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq,
     },
     error::{ContextError, ErrMode},
     stream::AsChar,
@@ -249,7 +249,7 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
         .min()
         .unwrap_or(input.len());
 
-    let (mut text, mut rest) = input.split_at(end);
+    let (text, mut rest) = input.split_at(end);
 
     if text.is_empty() {
         // This is due to the marker being at the beginning of the input. However,
@@ -260,7 +260,7 @@ fn plaintext(input: &mut &str) -> ModalResult<Inline> {
         // Approach to solve this is to peek ahead to see if this marker is NOT an
         // inline and then treat the marker as plaintext.
 
-        if let Err(_) = peek(inline).parse_next(&mut rest) {
+        if peek(inline).parse_next(&mut rest).is_err() {
             let marker = input.chars().next().unwrap();
             // Move the input one along
             match rest.char_indices().nth(1) {
@@ -668,7 +668,8 @@ fn trim_single_trailing_whitespace(mut s: String) -> String {
 }
 
 // Number consecutive Inline::OrderedList items
-fn number_ordered_lists(inlines: &mut Vec<Inline>) {
+// fn number_ordered_lists(inlines: &mut Vec<Inline>) {
+fn number_ordered_lists(inlines: &mut [Inline]) {
     let mut prev_numbering: Option<Vec<usize>> = None;
     let mut inbetweens = String::new();
 
@@ -1762,6 +1763,30 @@ mod tests {
                 .left()
                 .build()
         );
+    }
+
+    #[test]
+    #[ignore = "TO BE DONE"]
+    fn test_table_row_with_code_bars() {
+        //let mut text = "| `find . -name Makefile | xargs vim` | `ls **/Makefile | get name | vim $in` | Pass values as command parameters |\n";
+        let mut text = "| `find . -name Makefile  xargs vim` | `ls **/Makefile  get name  vim $in` | Pass values as command parameters |\n";
+
+        let v = table_row(&mut text).unwrap();
+
+        let expected_cell_1 =
+            TableCell::new_with_inlines(vec![Inline::code("find . -name Makefile")]);
+        let expected_cell_2 =
+            TableCell::new_with_inlines(vec![Inline::code("ls **/Makefile | get name | vim $in")]);
+        let expected_cell_3 = TableCell::new_with_inlines(vec![Inline::plaintext(
+            "Pass values as command parameters",
+        )]);
+
+        assert_eq!(
+            v,
+            TableRow {
+                cells: vec![expected_cell_1, expected_cell_2, expected_cell_3,]
+            }
+        )
     }
 
     #[test]

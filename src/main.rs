@@ -12,7 +12,6 @@ use markdown::Markdown;
 #[allow(unused_imports)]
 use log::{debug, error, info, log_enabled};
 
-use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableRow};
 use crate::parser::parse_tiddler;
 
 mod parser;
@@ -55,6 +54,19 @@ fn extract_tiddler_json(html: &str) -> Option<&str> {
 
 fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     // TODO file name from cli
+
+    if tiddler.title.contains([':', '/', '\\']) {
+        error!(
+            "Tiddler [{}] cannot be converted as the title contains either :', '/', or '\\'",
+            tiddler.title
+        );
+        return Ok(());
+    }
+
+    if tiddler.title == "Coming from Bash" {
+        println!("COMING FROM Bash");
+    };
+
     info!("Generating: {}", tiddler.title);
     let file_name = format!("./output/{}.md", tiddler.title);
 
@@ -72,76 +84,4 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     file.write_all(markdown.as_bytes()).expect("write failed");
 
     Ok(())
-}
-
-fn wrap(marker: &str, text: &str) -> String {
-    let mut s = String::new();
-    s.push_str(marker);
-    s.push_str(text);
-    s.push_str(marker);
-    s
-}
-
-fn link_markdown(link: &String, display_text: &Option<String>, external: &bool) -> String {
-    let mut markdown = String::new();
-
-    if !external {
-        // Process internal links
-        if let Some(display_text) = display_text {
-            markdown.push_str(&format!("[[{}|{}]]", link, display_text));
-        } else {
-            markdown.push_str(&format!("[[{}]]", link));
-        }
-    } else {
-        // Process external links
-        if let Some(display_text) = display_text {
-            markdown.push_str(&format!("[{display_text}]({link})"));
-        } else {
-            markdown.push_str(&format!("[{}]({})", link, link));
-        }
-    }
-
-    markdown
-}
-
-fn table_markdown(rows: &Vec<TableRow>) -> String {
-    let mut markdown = String::new();
-
-    let mut header = String::new();
-    let mut is_header = false;
-
-    for (n, row) in rows.iter().enumerate() {
-        let mut cell_widths = Vec::new();
-        for cell in row.cells.iter() {
-            let cell_contents = Markdown::from_inlines(&cell.contents).to_string();
-            let cell_contents = align_table_cell(cell.alignment.clone(), &cell_contents);
-            is_header = n == 0 && cell.header;
-
-            if is_header {
-                cell_widths.push(cell.contents.len());
-            };
-            markdown.push_str(&format!("|{cell_contents}"));
-        }
-        markdown.push_str("|\n");
-
-        if is_header {
-            // Add a seperate line with the underlining, e.g
-            // | ------ | ------ |
-            let header_line = cell_widths.iter().fold(String::new(), |s, &w| {
-                format!("| {} ", "-".repeat(w.max(2)))
-            });
-            markdown.push_str(&header_line);
-            markdown.push_str("|\n");
-            is_header = false;
-        };
-    }
-    markdown
-}
-
-fn align_table_cell(alignment: CellAlignment, contents: &str) -> String {
-    match alignment.horizontal {
-        CellHorizontalAlignment::Left => format!("{contents}  "),
-        CellHorizontalAlignment::Right => format!("  {contents}"),
-        CellHorizontalAlignment::Center => format!("  {contents}  "),
-    }
 }

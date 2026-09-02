@@ -1,9 +1,9 @@
-use std::{cell, fmt::Display};
+use std::fmt::Display;
 
 /// Obsidian markdown generation
 ///
 ///
-use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableCell, TableRow};
+use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableRow};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log_enabled};
@@ -61,17 +61,13 @@ impl Markdown {
             } => Self::format_link(link, display_text, external),
 
             Inline::OrderedList { level, numbering } => {
-                format!(
-                    "{}{}. ",
-                    "\t".repeat(*level - 1),
-                    numbering[*level - 1].to_string()
-                )
+                format!("{}{}. ", "\t".repeat(*level - 1), numbering[*level - 1])
             }
             Inline::UnorderedList { level } => format!("{}- ", "\t".repeat(level - 1)),
             Inline::Transclusion { tiddler } => format!("![[{tiddler}]]"),
             Inline::Table { rows } => Self::format_table(rows),
             Inline::EndOfText => String::new(),
-            _ => String::new(),
+            //_ => String::new(),
         }
     }
 
@@ -106,7 +102,7 @@ impl Markdown {
     }
 
     fn format_blockquote(text: &str, citation: &Option<String>) -> String {
-        let citation = citation.clone().unwrap_or(String::new());
+        let citation = citation.clone().unwrap_or_default();
         format!("> {}\n\n   __{}__", text, citation)
     }
 
@@ -125,7 +121,7 @@ impl Markdown {
         format!("![{caption}{dimensions}]({link})")
     }
 
-    fn format_table(rows: &Vec<TableRow>) -> String {
+    fn format_table(rows: &[TableRow]) -> String {
         let mut markdown = String::new();
 
         let mut is_header = false;
@@ -176,7 +172,6 @@ impl Markdown {
                     acc
                 });
 
-                debug!("{}", &header_line);
                 markdown.push_str(&header_line);
                 markdown.push_str("|\n");
                 is_header = false;
@@ -202,9 +197,8 @@ impl Display for Markdown {
 
 #[cfg(test)]
 mod tests {
-    use crate::markdown;
-
     use super::*;
+    use crate::abstract_syntax::TableCell;
     use pretty_assertions::assert_eq;
 
     #[test]
