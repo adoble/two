@@ -1628,7 +1628,7 @@ mod tests {
             }
         );
 
-        let mut text = " Contents 42 [[";
+        let mut text = " Contents 42 [[link]]";
         let v = plaintext(&mut text).unwrap();
         assert_eq!(
             v,
