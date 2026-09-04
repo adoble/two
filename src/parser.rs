@@ -3,7 +3,7 @@
 ///
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1},
+    ascii::{alphanumeric0, digit1, line_ending, multispace0, space0, space1, till_line_ending},
     combinator::{
         alt, delimited, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq,
     },
@@ -16,6 +16,7 @@ use url::Url;
 
 #[allow(unused_imports)]
 use log::{debug, error, info};
+use winnow::combinator::trace;
 
 use crate::abstract_syntax::{
     CellAlignment, CellHorizontalAlignment, CellVerticalAlignment, DimensionField, Dimensions,
@@ -103,20 +104,22 @@ fn highlight(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+/// Parses a block quote.
+///
+/// This removes  the end_of_line before the start marker,
+/// but the last end_of_line in the block quote is preserved.
 fn blockquote(input: &mut &str) -> ModalResult<Inline> {
-    let marker = "<<<";
+    let mut marker = "<<<";
 
-    let quote = delimited(
-        (multispace0, marker, multispace0),
-        take_until(1.., marker),
-        (multispace0, marker, multispace0),
-    )
-    .parse_next(input)?
-    .trim();
+    marker.parse_next(input)?;
+    till_line_ending.parse_next(input)?;
 
-    let citation = take_while(0.., |c| c != '\n' && c != '\r')
-        .parse_next(input)?
-        .trim();
+    line_ending.parse_next(input)?;
+
+    let quote = take_until(1.., marker).parse_next(input)?;
+    marker.parse_next(input)?;
+
+    let citation = till_line_ending.parse_next(input)?.trim();
 
     let citation_option = (!citation.is_empty()).then(|| citation.to_string());
 
@@ -237,6 +240,21 @@ fn plaintext_old(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn plaintext(input: &mut &str) -> ModalResult<Inline> {
+    let (chars, _): (Vec<char>, _) =
+        repeat_till(0.., any, peek(alt((inline, end_of_text)))).parse_next(input)?;
+
+    let s: String = chars.into_iter().collect();
+
+    Ok(Inline::PlainText { text: s })
+}
+
+fn end_of_text(input: &mut &str) -> ModalResult<Inline> {
+    eof.parse_next(input)?;
+    Ok(Inline::EndOfText)
+}
+
+#[deprecated]
+fn plaintext_x(input: &mut &str) -> ModalResult<Inline> {
     let mut marker_positions: Vec<_> = MARKERS.iter().map(|&m| input.find(m)).collect();
 
     // Now find the first camel case link and add it's position
@@ -627,7 +645,7 @@ fn list(input: &mut &str) -> ModalResult<Inline> {
 // Only adding the intermediate parser so that the alt in the inline
 // parser does not become too long
 fn blocks(input: &mut &str) -> ModalResult<Inline> {
-    alt((blockquote, codeblock)).parse_next(input)
+    alt((trace("blockquote", blockquote), codeblock)).parse_next(input)
 }
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
@@ -751,8 +769,6 @@ mod tests {
     fn test_bold() {
         let mut text = "Text that has ''bold text'' in it.";
         let r = parse_tiddler(&mut text);
-
-        assert!(r.is_ok());
 
         let v = r.unwrap();
         assert_eq!(v.len(), 3);
@@ -899,22 +915,36 @@ mod tests {
 
     #[test]
     fn test_block_quote_direct() {
-        let mut text = "<<< 
-        Knowing yourself is the beginning of all wisdom.
-        <<< Aristotle
-        ";
-        let r = blockquote(&mut text);
-
-        assert!(r.is_ok());
-
-        let inline = r.unwrap();
-        // assert_eq!(v.len(), 2);
+        let mut text = concat!(
+            "<<< \n",
+            "Knowing yourself is the beginning of all wisdom.\n",
+            "<<< Aristotle \n",
+        );
+        let inline = blockquote(&mut text).unwrap();
 
         assert_eq!(
             inline,
             Inline::blockquote(
-                "Knowing yourself is the beginning of all wisdom.",
+                "Knowing yourself is the beginning of all wisdom.\n",
                 "Aristotle"
+            )
+        );
+
+        // Multi-line block quote
+        let mut text = concat!(
+            "<<< \n",
+            "Don’t walk in front of me… I may not follow\n",
+            "Don’t walk behind me… I may not lead\n",
+            "Walk beside me… just be my friend.\n",
+            "<<< Albert Camus \n",
+        );
+        let inline = blockquote(&mut text).unwrap();
+
+        assert_eq!(
+            inline,
+            Inline::blockquote(
+                "Don’t walk in front of me… I may not follow\nDon’t walk behind me… I may not lead\nWalk beside me… just be my friend.\n",
+                "Albert Camus"
             )
         );
     }
@@ -944,7 +974,7 @@ mod tests {
         let expected: Vec<Inline> = vec![
             Inline::plaintext("A word of wisdom:\n"),
             Inline::blockquote(
-                "Knowing yourself is the beginning of all wisdom.",
+                "Knowing yourself is the beginning of all wisdom.\n",
                 "Aristotle",
             ),
         ];
@@ -970,7 +1000,7 @@ mod tests {
 
         let expected: Vec<Inline> = vec![
             Inline::plaintext("A word of wisdom:\n"),
-            Inline::blockquote("Knowing yourself is the beginning of all wisdom.", ""),
+            Inline::blockquote("Knowing yourself is the beginning of all wisdom.\n", ""),
         ];
 
         assert_eq!(v, expected);
@@ -1002,7 +1032,7 @@ mod tests {
         let expected: Vec<Inline> = vec![
             Inline::plaintext("A word of wisdom:\n"),
             Inline::blockquote(
-                "The saddest aspect of life right now is that science\ngathers knowledge faster than society gathers wisdom.",
+                "The saddest aspect of life right now is that science\ngathers knowledge faster than society gathers wisdom.\n",
                 "Isaac Asimov",
             ),
         ];
