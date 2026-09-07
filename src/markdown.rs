@@ -3,7 +3,11 @@ use std::fmt::Display;
 /// Obsidian markdown generation
 ///
 ///
-use crate::abstract_syntax::{CellAlignment, CellHorizontalAlignment, Inline, TableRow};
+use crate::abstract_syntax::{
+    CellAlignment, CellHorizontalAlignment,
+    Inline::{self, TableCellDelimiter},
+    TableRow,
+};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, log_enabled};
@@ -66,6 +70,7 @@ impl Markdown {
             Inline::UnorderedList { level } => format!("{}- ", "\t".repeat(level - 1)),
             Inline::Transclusion { tiddler } => format!("![[{tiddler}]]"),
             Inline::Table { rows } => Self::format_table(rows),
+            Inline::TableCellDelimiter => String::new(),
             Inline::EndOfText => String::new(),
             //_ => String::new(),
         }

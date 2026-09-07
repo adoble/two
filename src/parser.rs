@@ -351,19 +351,18 @@ fn starts_with_capital(word: &str) -> bool {
 }
 
 fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    let (alignment, leading_spaces, header, contents, _) = seq!(
-        opt(vertical_alignment),
-        space0,
-        opt("!"),
-        // table_cell_contents,
-        take_until(1.., '|'),
-        take(1usize) // remove the trailng '|'
+    let alignment = opt(vertical_alignment).parse_next(input)?;
+    let leading_spaces = space0.parse_next(input)?;
+    let header = opt("!").parse_next(input)?;
+    let mut inlines = repeat_till(
+        1..,
+        alt((code, link, formatting, cell_text)),
+        alt((cell_delimiter, end_of_text)),
     )
+    .map(|v: (Vec<Inline>, Inline)| v.0)
     .parse_next(input)?;
 
-    // Parse the contents and convert into Inline(s) by recursively calling this.
-    let s = contents.to_owned();
-    let mut contents = parse_table_cell_contents(&mut s.as_str())?;
+    println!("DEBUG table_cell inlines:{:?}", inlines);
 
     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
@@ -372,13 +371,11 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     // 1)  the leading spaces are consumed by the parser, so use the value returned by it and check the last character
     // 2) The contents are really inlines, so need to find the last one.
     let start_space = !leading_spaces.is_empty();
-    let end_space = if let Some(Inline::PlainText { text }) = contents.last() {
+    let end_space = if let Some(Inline::PlainText { text }) = inlines.last() {
         text.ends_with(' ')
     } else {
         false
     };
-
-    // let end_space = contents.chars().next_back().map_or(false, |c| c == ' ');
 
     let horizontal_alignment = match (start_space, end_space) {
         (true, true) => CellHorizontalAlignment::Center,
@@ -393,24 +390,39 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     // Trim single spaces at the end of the content as these only refer to the alignment.
     // Any aligment space at the start has been consumed by the parser
 
-    if let Some(Inline::PlainText { text }) = contents.last() {
+    if let Some(Inline::PlainText { text }) = inlines.last() {
         let trimmed_text = trim_single_trailing_whitespace(text.clone());
         // Remove the last plain text element of the inlines and replace it
-        // with the trimmed version
-        contents.pop();
-        contents.push(PlainText { text: trimmed_text });
+        // with the trimmed version unless if is empty
+        inlines.pop();
+        if !trimmed_text.is_empty() {
+            inlines.push(PlainText { text: trimmed_text });
+        }
     }
 
     // TODO not doing merges at the moment
 
     let table_cell = TableCell {
-        contents,
+        contents: inlines,
         alignment,
         header,
         ..Default::default()
     };
 
     Ok(table_cell)
+}
+
+fn cell_delimiter(input: &mut &str) -> ModalResult<Inline> {
+    "|".parse_next(input)?;
+    Ok(Inline::TableCellDelimiter)
+}
+fn cell_text(input: &mut &str) -> ModalResult<Inline> {
+    let (chars, _): (Vec<char>, _) =
+        repeat_till(0.., any, peek(alt((inline, end_of_text)))).parse_next(input)?;
+
+    let s: String = chars.into_iter().collect();
+
+    Ok(Inline::PlainText { text: s })
 }
 
 pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
@@ -630,7 +642,6 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
         underlined,
         superscript,
         strikethrough,
-        code,
         highlight,
     ))
     .parse_next(input)
@@ -642,20 +653,28 @@ fn list(input: &mut &str) -> ModalResult<Inline> {
 
 // Only adding the intermediate parser so that the alt in the inline
 // parser does not become too long
-fn blocks(input: &mut &str) -> ModalResult<Inline> {
-    alt((trace("blockquote", blockquote), codeblock)).parse_next(input)
+// fn blocks(input: &mut &str) -> ModalResult<Inline> {
+//     //  alt((codeblock, trace("blockquote", blockquote))).parse_next(input)
+//     alt((codeblock, blockquote)).parse_next(input)
+// }
+
+// Only adding the intermediate parser so that the alt in the inline
+// parser does not become too long
+fn structure(input: &mut &str) -> ModalResult<Inline> {
+    //  alt((codeblock, trace("blockquote", blockquote))).parse_next(input)
+    alt((heading, list, blockquote)).parse_next(input)
 }
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
-        blocks,
-        heading,
-        list,
-        link,
-        transclusion,
-        image,
-        formatting,
-        table,
+        trace("codeblock", codeblock), // Put at the top as it consumes all markers
+        trace("code", code),           // Put second as it also consumes all markers
+        trace("structure", structure),
+        trace("link", link),
+        trace("transclusion", transclusion),
+        trace("image", image),
+        trace("formatting", formatting),
+        trace("table", table),
     ))
     .parse_next(input)
 }
@@ -1794,15 +1813,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TO BE DONE"]
+    //#[ignore = "TO DO"]
     fn test_table_row_with_code_bars() {
-        //let mut text = "| `find . -name Makefile | xargs vim` | `ls **/Makefile | get name | vim $in` | Pass values as command parameters |\n";
-        let mut text = "| `find . -name Makefile  xargs vim` | `ls **/Makefile  get name  vim $in` | Pass values as command parameters |\n";
+        let mut text = "| `find . -name Makefile | xargs vim` | `ls **/Makefile | get name | vim $in` | Pass values as command parameters |\n";
+        //let mut text = "| `find . -name Makefile  xargs vim` | `ls **/Makefile  get name  vim $in` | Pass values as command parameters |\n";
 
         let v = table_row(&mut text).unwrap();
 
         let expected_cell_1 =
-            TableCell::new_with_inlines(vec![Inline::code("find . -name Makefile")]);
+            TableCell::new_with_inlines(vec![Inline::code("find . -name Makefile | xargs vim")]);
         let expected_cell_2 =
             TableCell::new_with_inlines(vec![Inline::code("ls **/Makefile | get name | vim $in")]);
         let expected_cell_3 = TableCell::new_with_inlines(vec![Inline::plaintext(

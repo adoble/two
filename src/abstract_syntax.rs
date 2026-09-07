@@ -66,6 +66,8 @@ pub enum Inline {
     Table {
         rows: Vec<TableRow>,
     },
+
+    TableCellDelimiter,
     EndOfText,
 }
 
