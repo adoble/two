@@ -5,7 +5,7 @@ use std::fmt::Display;
 ///
 use crate::abstract_syntax::{
     CellAlignment, CellHorizontalAlignment,
-    Inline::{self, TableCellDelimiter},
+    Inline::{self},
     TableRow,
 };
 

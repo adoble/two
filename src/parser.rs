@@ -362,8 +362,6 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
     .map(|v: (Vec<Inline>, Inline)| v.0)
     .parse_next(input)?;
 
-    println!("DEBUG table_cell inlines:{:?}", inlines);
-
     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
     // Handle the horizonal alignment seperately by looking for spaces at
