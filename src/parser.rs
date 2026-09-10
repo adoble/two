@@ -1352,6 +1352,23 @@ mod tests {
     }
 
     #[test]
+    fn test_external_link_with_description() {
+        let mut input = "[[anyhow crate|https://crates.io/crates/Anyhow]]";
+        let v: Inline = link(&mut input).unwrap();
+
+        assert_eq!(
+            v,
+            Inline::ext_link("https://crates.io/crates/Anyhow", "anyhow crate"),
+        );
+    }
+
+    #[test]
+    #[ignore = "TO DO, Inlines containing Vec<Inline>"]
+    fn test_external_link_highlighted() {
+        let _input = "**[[anyhow crate|https://crates.io/crates/Anyhow]]**";
+    }
+
+    #[test]
     fn test_hump_direct() {
         let mut text = "CamelCase";
         let s = hump(&mut text).unwrap();
@@ -2047,6 +2064,14 @@ mod tests {
     #[test]
     fn test_problem_tiddler() {
         let mut input = include_str!("../test_resources/problem-tiddler.tw");
+
+        let _inlines = parse_tiddler(&mut input).unwrap();
+    }
+
+    #[test]
+    #[ignore = "TO DO after rewrite of table parsing for performance"]
+    fn test_big_table() {
+        let mut input = include_str!("../test_resources/big-table.tw");
 
         let _inlines = parse_tiddler(&mut input).unwrap();
     }
