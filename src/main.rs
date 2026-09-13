@@ -63,8 +63,8 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
         return Ok(());
     }
 
-    if tiddler.title == "Coming from Bash" {
-        println!("COMING FROM Bash");
+    if tiddler.title == "De-bouncing a push button using RTIC" {
+        println!("{}", tiddler.title);
     };
 
     info!("Generating: {}", tiddler.title);

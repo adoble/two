@@ -1,0 +1,28 @@
+
+
+
+!! Debugging
+
+# Plug in the picoprobe
+# Run ~OpenOCD as described in [[Test run of OCD]]
+# Form VSCode toolbar `Run->Start Debugging` or `F5`
+# Debug (set breakpoints etc.) as normal using the debug menu:
+
+[img width=300 [picoprobe-debug-menu.png]]
+
+Buttons (from left to right):
+
+# button (green) resets your Pico device and the example application you flashed onto it
+
+ # button continues execution after it was paused manually or from setting a breakpoint
+
+ # button executes the current line of code highlighted in the source editor and everything that it calls - it does not step you through all of the lower level code in a function or a chain of functions called
+
+ # button works similarly to the third except it steps you through all code including function calls into the standard Rust libraries
+
+ # button steps out of the current chain of functions back up to the root level
+
+ # button restarts execution from main()
+
+ #  button stops debugging, disconnects from the target Pico, and returns you to the source code editor
+

@@ -14,6 +14,7 @@ use url::Url;
 
 #[allow(unused_imports)]
 use log::{debug, error, info};
+#[allow(unused_imports)]
 use winnow::combinator::trace;
 
 use crate::abstract_syntax::{
@@ -350,86 +351,93 @@ fn starts_with_capital(word: &str) -> bool {
     word.chars().next().is_some_and(|c| c.is_uppercase())
 }
 
-fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
-    let alignment = opt(vertical_alignment).parse_next(input)?;
-    let leading_spaces = space0.parse_next(input)?;
-    let header = opt("!").parse_next(input)?;
-    let mut inlines = repeat_till(
-        1..,
-        alt((code, link, formatting, cell_text)),
-        alt((cell_delimiter, end_of_text)),
-    )
-    .map(|v: (Vec<Inline>, Inline)| v.0)
-    .parse_next(input)?;
+// #[deprecated]
+// fn table_cell_old(input: &mut &str) -> ModalResult<TableCell> {
+//     let start = Instant::now();
 
-    let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
+//     let alignment = opt(vertical_alignment).parse_next(input)?;
+//     let leading_spaces = space0.parse_next(input)?;
+//     let header = opt("!").parse_next(input)?;
+//     let mut inlines = repeat_till(
+//         1..,
+//         alt((code, link, formatting, cell_text)),
+//         alt((cell_delimiter, end_of_text)),
+//     )
+//     .map(|v: (Vec<Inline>, Inline)| v.0)
+//     .parse_next(input)?;
 
-    // Handle the horizonal alignment seperately by looking for spaces at
-    // the start and end of the contents. Two complications:
-    // 1)  the leading spaces are consumed by the parser, so use the value returned by it and check the last character
-    // 2) The contents are really inlines, so need to find the last one.
-    let start_space = !leading_spaces.is_empty();
-    let end_space = if let Some(Inline::PlainText { text }) = inlines.last() {
-        text.ends_with(' ')
-    } else {
-        false
-    };
+//     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
-    let horizontal_alignment = match (start_space, end_space) {
-        (true, true) => CellHorizontalAlignment::Center,
-        (true, false) => CellHorizontalAlignment::Right,
-        (false, true) => CellHorizontalAlignment::Left,
-        _ => CellHorizontalAlignment::default(),
-    };
-    alignment.horizontal = horizontal_alignment;
+//     // Handle the horizonal alignment seperately by looking for spaces at
+//     // the start and end of the contents. Two complications:
+//     // 1)  the leading spaces are consumed by the parser, so use the value returned by it and check the last character
+//     // 2) The contents are really inlines, so need to find the last one.
+//     let start_space = !leading_spaces.is_empty();
+//     let end_space = if let Some(Inline::PlainText { text }) = inlines.last() {
+//         text.ends_with(' ')
+//     } else {
+//         false
+//     };
 
-    let header = header == Some("!");
+//     let horizontal_alignment = match (start_space, end_space) {
+//         (true, true) => CellHorizontalAlignment::Center,
+//         (true, false) => CellHorizontalAlignment::Right,
+//         (false, true) => CellHorizontalAlignment::Left,
+//         _ => CellHorizontalAlignment::default(),
+//     };
+//     alignment.horizontal = horizontal_alignment;
 
-    // Trim single spaces at the end of the content as these only refer to the alignment.
-    // Any aligment space at the start has been consumed by the parser
+//     let header = header == Some("!");
 
-    if let Some(Inline::PlainText { text }) = inlines.last() {
-        let trimmed_text = trim_single_trailing_whitespace(text.clone());
-        // Remove the last plain text element of the inlines and replace it
-        // with the trimmed version unless if is empty
-        inlines.pop();
-        if !trimmed_text.is_empty() {
-            inlines.push(PlainText { text: trimmed_text });
-        }
-    }
+//     // Trim single spaces at the end of the content as these only refer to the alignment.
+//     // Any aligment space at the start has been consumed by the parser
 
-    // TODO not doing merges at the moment
+//     if let Some(Inline::PlainText { text }) = inlines.last() {
+//         let trimmed_text = trim_single_trailing_whitespace(text.clone());
+//         // Remove the last plain text element of the inlines and replace it
+//         // with the trimmed version unless if is empty
+//         inlines.pop();
+//         if !trimmed_text.is_empty() {
+//             inlines.push(PlainText { text: trimmed_text });
+//         }
+//     }
 
-    let table_cell = TableCell {
-        contents: inlines,
-        alignment,
-        header,
-        ..Default::default()
-    };
+//     // TODO not doing merges at the moment
 
-    Ok(table_cell)
-}
+//     let table_cell = TableCell {
+//         contents: inlines,
+//         alignment,
+//         header,
+//         ..Default::default()
+//     };
+
+//     Ok(table_cell)
+// }
 
 fn cell_delimiter(input: &mut &str) -> ModalResult<Inline> {
     "|".parse_next(input)?;
     Ok(Inline::TableCellDelimiter)
 }
-fn cell_text(input: &mut &str) -> ModalResult<Inline> {
-    let (chars, _): (Vec<char>, _) =
-        repeat_till(0.., any, peek(alt((inline, end_of_text)))).parse_next(input)?;
 
-    let s: String = chars.into_iter().collect();
+// #[deprecated]
+// fn cell_text(input: &mut &str) -> ModalResult<Inline> {
 
-    Ok(Inline::PlainText { text: s })
-}
+//     let (chars, _): (Vec<char>, _) =
+//         repeat_till(0.., any, peek(alt((inline, end_of_text)))).parse_next(input)?;
+
+//     let s: String = chars.into_iter().collect();
+
+//     Ok(Inline::PlainText { text: s })
+// }
 
 pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
     let mut inlines = Vec::<Inline>::new();
 
     while !input.is_empty() {
-        let (characters, inline) = repeat_till(0.., any, alt((formatting, link, image, plaintext)))
-            .map(|v: (Vec<char>, Inline)| v)
-            .parse_next(input)?;
+        let (characters, inline) =
+            repeat_till(0.., any, alt((code, formatting, link, image, plaintext)))
+                .map(|v: (Vec<char>, Inline)| v)
+                .parse_next(input)?;
 
         let s: String = characters.into_iter().collect();
 
@@ -450,11 +458,102 @@ pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
 
 fn table_row(input: &mut &str) -> ModalResult<TableRow> {
     "|".parse_next(input)?;
+
     let cells = repeat_till(1.., table_cell, alt((line_ending, eof)))
         .map(|v: (Vec<TableCell>, &str)| v.0)
         .parse_next(input)?;
 
     Ok(TableRow { cells })
+}
+
+fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
+    let mut raw_text: String;
+    let mut contents = String::new();
+    let cell: TableCell;
+
+    let alignment = opt(vertical_alignment).parse_next(input)?;
+    let leading_spaces = space0.parse_next(input)?;
+
+    let header = opt("!").parse_next(input)?;
+
+    loop {
+        raw_text = take_till(0.., ('`', '|')).parse_next(input)?.to_string();
+
+        let marker = take(1usize).parse_next(input)?;
+
+        if marker == "`" {
+            let code_markdown = take_till(1.., '`').parse_next(input)?;
+
+            take(1usize).parse_next(input)?;
+            contents.push_str("`");
+            contents.push_str(code_markdown);
+            contents.push_str("`");
+        }
+
+        if marker == "|" {
+            contents.push_str(&raw_text);
+
+            let mut inlines =
+                parse_table_cell_contents(&mut contents.as_str()).unwrap_or(Vec::new());
+
+            let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
+
+            // Handle the horizonal alignment seperately by looking for spaces at
+            // the start and end of the contents. Two complications:
+            // 1.  the leading spaces are consumed by the parser, so use the value returned by it and check the last character
+            // 2. The contents are really inlines, so need to find the last one.
+            let start_space = !leading_spaces.is_empty();
+            let end_space = if let Some(Inline::PlainText { text }) = inlines.last() {
+                text.ends_with(' ')
+            } else {
+                false
+            };
+            let horizontal_alignment = match (start_space, end_space) {
+                (true, true) => CellHorizontalAlignment::Center,
+                (true, false) => CellHorizontalAlignment::Right,
+                (false, true) => CellHorizontalAlignment::Left,
+                _ => CellHorizontalAlignment::default(),
+            };
+            alignment.horizontal = horizontal_alignment;
+
+            let header = header == Some("!");
+
+            // Trim single spaces at the end of the content as these only refer to the alignment.
+            // Any aligment space at the start has been consumed by the parser
+            if let Some(Inline::PlainText { text }) = inlines.last() {
+                let trimmed_text = trim_single_trailing_whitespace(text.clone());
+                // Remove the last plain text element of the inlines and replace it
+                // with the trimmed version unless if is empty
+                inlines.pop();
+                if !trimmed_text.is_empty() {
+                    inlines.push(PlainText { text: trimmed_text });
+                }
+            }
+
+            // Trim single spaces at the end of the content as these only refer to the alignment.
+            // Any aligment space at the start has been consumed by the parser
+            if let Some(Inline::PlainText { text }) = inlines.last() {
+                let trimmed_text = trim_single_trailing_whitespace(text.clone());
+                // Remove the last plain text element of the inlines and replace it
+                // with the trimmed version unless if is empty
+                inlines.pop();
+                if !trimmed_text.is_empty() {
+                    inlines.push(PlainText { text: trimmed_text });
+                }
+            }
+
+            cell = TableCell {
+                contents: inlines,
+                alignment,
+                header,
+                ..Default::default()
+            };
+
+            break;
+        }
+    }
+
+    Ok(cell)
 }
 
 fn table(input: &mut &str) -> ModalResult<Inline> {
@@ -665,14 +764,14 @@ fn structure(input: &mut &str) -> ModalResult<Inline> {
 
 fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
-        trace("codeblock", codeblock), // Put at the top as it consumes all markers
-        trace("code", code),           // Put second as it also consumes all markers
-        trace("structure", structure),
-        trace("link", link),
-        trace("transclusion", transclusion),
-        trace("image", image),
-        trace("formatting", formatting),
-        trace("table", table),
+        codeblock, // Put at the top as it consumes all markers
+        code,      // Put second as it also consumes all markers
+        structure,
+        link,
+        transclusion,
+        image,
+        formatting,
+        table,
     ))
     .parse_next(input)
 }
@@ -1676,14 +1775,6 @@ mod tests {
 
         let v = table_cell(&mut text).unwrap();
 
-        // assert_eq!(
-        //     v,
-        //     TableCell {
-        //         text: "aaa".to_string(),
-        //         ..Default::default()
-        //     }
-        // );
-
         assert_eq!(v, TableCell::new("aaa"));
     }
 
@@ -1828,7 +1919,6 @@ mod tests {
     }
 
     #[test]
-    //#[ignore = "TO DO"]
     fn test_table_row_with_code_bars() {
         let mut text = "| `find . -name Makefile | xargs vim` | `ls **/Makefile | get name | vim $in` | Pass values as command parameters |\n";
         //let mut text = "| `find . -name Makefile  xargs vim` | `ls **/Makefile  get name  vim $in` | Pass values as command parameters |\n";
@@ -2069,9 +2159,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TO DO after rewrite of table parsing for performance"]
+    //#[ignore = "TO DO after rewrite of table parsing for performance"]
     fn test_big_table() {
+        // let mut input = include_str!("../test_resources/big-table.tw");
         let mut input = include_str!("../test_resources/big-table.tw");
+
+        let _inlines = parse_tiddler(&mut input).unwrap();
+    }
+    fn test_problem_tiddler_2() {
+        let mut input = include_str!("../test_resources/problem-tiddler-2.tw");
 
         let _inlines = parse_tiddler(&mut input).unwrap();
     }
