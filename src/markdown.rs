@@ -63,7 +63,14 @@ impl Markdown {
                 link,
                 external,
             } => Self::format_link(link, display_text, external),
-
+            Inline::EmbeddedUrl {
+                url,
+                trailing_punctuation,
+            } => format!(
+                "{}{}",
+                url,
+                trailing_punctuation.clone().unwrap_or(String::new())
+            ),
             Inline::OrderedList { level, numbering } => {
                 format!("{}{}. ", "\t".repeat(*level - 1), numbering[*level - 1])
             }

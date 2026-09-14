@@ -52,6 +52,12 @@ pub enum Inline {
         link: String,
         external: bool,
     },
+    /// URLs embedded directly in the text
+    /// During conversion trailing_punctuation should be handled as plain text.
+    EmbeddedUrl {
+        url: String,
+        trailing_punctuation: Option<String>,
+    },
     OrderedList {
         level: usize,
         numbering: Vec<usize>,
@@ -239,6 +245,17 @@ impl Inline {
             display_text,
             link,
             external: true,
+        }
+    }
+
+    pub fn embedded_url(url: &str, trailing_punctuation: &str) -> Inline {
+        let url = url.to_string();
+        let trailing_punctuation =
+            (!trailing_punctuation.is_empty()).then(|| trailing_punctuation.to_string());
+
+        Inline::EmbeddedUrl {
+            url,
+            trailing_punctuation,
         }
     }
 

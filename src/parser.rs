@@ -3,8 +3,8 @@
 ///
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, digit1, line_ending, space0, space1, till_line_ending},
-    combinator::{alt, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq},
+    ascii::{alphanumeric0, digit1, line_ending, multispace1, space0, space1, till_line_ending},
+    combinator::{alt, eof, fail, not, opt, peek, preceded, repeat, repeat_till, separated, seq},
     error::{ContextError, ErrMode},
     stream::AsChar,
     token::{any, literal, one_of, take, take_till, take_until, take_while},
@@ -601,7 +601,8 @@ fn image(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn link(input: &mut &str) -> ModalResult<Inline> {
-    let link = alt((camel_case_link, external_link, simple_link)).parse_next(input)?;
+    let link =
+        alt((camel_case_link, external_link, embedded_url, simple_link)).parse_next(input)?;
 
     Ok(link)
 }
@@ -661,6 +662,60 @@ fn external_link(input: &mut &str) -> ModalResult<Inline> {
         link,
         external: true,
     })
+}
+
+// fn url(input: &mut &str) -> ModalResult<Inline> {
+
+//     let whitespace = |c|  (AsChar::is_space(c) || AsChar::is_newline(c));
+//     let normal_punctuation = |c| [',', '.', ';', ':', '!', '?', ')'].contains(c);
+//     let end_of_url =   whitespace;
+//     let end_of_url = |c|  !(AsChar::is_space(c) || AsChar::is_newline(c));
+
+//     peek((one_of((',', '.', ';', ':', '!', '?', ')')), alt((multispace1, line_ending, eof ))) );
+
+//     let end_of_url = alt((
+//         ((one_of((',', '.', ';', ':', '!', '?', ')')), multispace1),
+//         multispace1)));
+
+//     let (protocol, path) = (
+//         alt(("https://", "http://")),
+//        // take_while(1.., |c| !(AsChar::is_space(c) || AsChar::is_newline(c))),
+//         take_till(1.., end_of_url),
+//     )
+//         .parse_next(input)?;
+
+//     // the last character is maybe just normal punctuation
+
+//         let link =
+//     Ok(Inline::ext_link("link", "display_text"))
+// }
+
+fn embedded_url(input: &mut &str) -> ModalResult<Inline> {
+    let (protocol, path) = (
+        alt(("https://", "http://")),
+        take_while(1.., |c| !(AsChar::is_space(c) || AsChar::is_newline(c))),
+    )
+        .parse_next(input)?;
+
+    let mut url = format!("{}{}", protocol, path);
+
+    // If the url ends with a punctuation character (due to the simplicity of the parser)
+    // then remove it from the url and save it.
+    // SAFETY: The url string is guarenteed to have more then one character
+    let end_char = url.chars().last().unwrap();
+    let (url, trailing_punctuation) = if [',', '.', ';', ':', '!', '?', ')'].contains(&end_char) {
+        url.truncate(url.len() - 1);
+        (url, Some(end_char.to_string()))
+    } else {
+        (url, None)
+    };
+
+    Ok(Inline::EmbeddedUrl {
+        url,
+        trailing_punctuation,
+    })
+
+    //let url_link = Inline::UrlLink {}
 }
 
 fn camel_case_link(input: &mut &str) -> ModalResult<Inline> {
@@ -1557,6 +1612,38 @@ mod tests {
         ];
 
         assert_eq!(l, expectations);
+    }
+
+    #[test]
+    fn test_embedded_url_direct() {
+        let mut input = "https://github.com/adoble/pico-rtic-template";
+        let inline = embedded_url(&mut input).unwrap();
+
+        assert_eq!(
+            inline,
+            Inline::embedded_url("https://github.com/adoble/pico-rtic-template", "")
+        );
+
+        let mut input = "http://example.com";
+        let inline = embedded_url(&mut input).unwrap();
+
+        assert_eq!(inline, Inline::embedded_url("http://example.com", ""));
+    }
+
+    #[test]
+    fn test_embedded_url() {
+        // Also test the traing punctuation
+        let mut input = "Project has been set up using the template in https://github.com/adoble/pico-rtic-template, i.e. by using this";
+
+        let inlines = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("Project has been set up using the template in "),
+            Inline::embedded_url("https://github.com/adoble/pico-rtic-template", ","),
+            Inline::plaintext(" i.e. by using this"),
+        ];
+
+        assert_eq!(inlines, expected);
     }
 
     #[test]
