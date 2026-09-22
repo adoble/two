@@ -6,27 +6,27 @@ pub enum Inline {
         text: String,
     },
     Italics {
-        text: String,
+        inlines: Vec<Inline>,
     },
     Bold {
-        text: String,
+        inlines: Vec<Inline>,
     },
     Underlined {
-        text: String,
+        inlines: Vec<Inline>,
     },
     Superscript {
-        text: String,
+        inlines: Vec<Inline>,
     },
     Subscript {
-        text: String,
+        inlines: Vec<Inline>,
     },
     Strikethrough {
-        text: String,
-    },
-    Code {
-        text: String,
+        inlines: Vec<Inline>,
     },
     Highlight {
+        inlines: Vec<Inline>,
+    },
+    Code {
         text: String,
     },
     BlockQuote {
@@ -38,7 +38,7 @@ pub enum Inline {
         language: Option<String>,
     },
     Heading {
-        text: String,
+        inlines: Vec<Inline>,
         level: usize,
     },
     Image {
@@ -141,38 +141,43 @@ impl Inline {
     }
 
     pub fn bold(text: &str) -> Inline {
+        let inline = Inline::plaintext(text);
         Inline::Bold {
-            text: text.to_string(),
+            inlines: vec![inline],
         }
+    }
+
+    pub fn italics_with_inlines(inlines: Vec<Inline>) -> Inline {
+        Inline::Italics { inlines }
     }
 
     pub fn italics(text: &str) -> Inline {
         Inline::Italics {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
         }
     }
 
     pub fn underlined(text: &str) -> Inline {
         Inline::Underlined {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
         }
     }
 
     pub fn superscript(text: &str) -> Inline {
         Inline::Superscript {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
         }
     }
 
     pub fn subscript(text: &str) -> Inline {
         Inline::Subscript {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
         }
     }
 
     pub fn strikethrough(text: &str) -> Inline {
         Inline::Strikethrough {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
         }
     }
 
@@ -184,7 +189,7 @@ impl Inline {
 
     pub fn highlight(text: &str) -> Inline {
         Inline::Highlight {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
         }
     }
 
@@ -208,7 +213,7 @@ impl Inline {
 
     pub fn heading(text: &str, level: usize) -> Inline {
         Inline::Heading {
-            text: text.to_string(),
+            inlines: vec![Inline::plaintext(text)],
             level,
         }
     }

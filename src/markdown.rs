@@ -32,18 +32,32 @@ impl Markdown {
         self.0.push_str(&s);
     }
 
-    fn convert_inline(&mut self, inline: &Inline) -> String {
+    fn convert_inlines(&self, inlines: &[Inline]) -> String {
+        inlines
+            .iter()
+            .map(|i| self.convert_inline(i))
+            // .map(|s| s.as_str())
+            .collect()
+    }
+
+    fn convert_inline(&self, inline: &Inline) -> String {
         match inline {
             Inline::PlainText { text } => text.to_string(),
-            Inline::Italics { text } => Self::wrap("__", text),
-            Inline::Bold { text } => Self::wrap("**", text),
+            // Inline::Italics { text } => Self::wrap("__", text),
+            Inline::Italics { inlines } => format!("__{}__", self.convert_inlines(inlines)),
 
-            Inline::Underlined { text } => format!("<u>{text}</u>"),
-            Inline::Superscript { text } => format!("<sup>{text}</sup>"),
-            Inline::Subscript { text } => format!("<sub>{text}</sub>"),
-            Inline::Strikethrough { text } => Self::wrap("~~", text),
-            Inline::Code { text } => Self::wrap("```", text),
-            Inline::Highlight { text } => Self::wrap("==", text),
+            Inline::Bold { inlines } => format!("**{}**", self.convert_inlines(inlines)),
+            Inline::Underlined { inlines } => format!("<u>{}</u>", self.convert_inlines(inlines)),
+            Inline::Superscript { inlines } => {
+                format!("<sup>{}</sup>", self.convert_inlines(inlines))
+            }
+
+            Inline::Subscript { inlines } => {
+                format!("<sub>{}</sub>", self.convert_inlines(inlines))
+            }
+            Inline::Strikethrough { inlines } => format!("~~{}~~", self.convert_inlines(inlines)),
+            Inline::Highlight { inlines } => format!("=={}==", self.convert_inlines(inlines)),
+            Inline::Code { text } => Self::wrap_inlines("```", text),
             Inline::BlockQuote { text, citation } => Self::format_blockquote(text, citation),
 
             Inline::CodeBlock { text, language } => format!(
@@ -51,7 +65,9 @@ impl Markdown {
                 language.clone().unwrap_or(String::new()),
                 text
             ),
-            Inline::Heading { text, level } => format!("{} {}", "#".repeat(*level), text),
+            Inline::Heading { inlines, level } => {
+                format!("{} {}", "#".repeat(*level), self.convert_inlines(inlines))
+            }
             Inline::Image {
                 width,
                 height,
@@ -83,7 +99,7 @@ impl Markdown {
         }
     }
 
-    fn wrap(marker: &str, text: &str) -> String {
+    fn wrap_inlines(marker: &str, text: &str) -> String {
         let mut s = String::new();
         s.push_str(marker);
         s.push_str(text);

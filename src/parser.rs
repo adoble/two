@@ -3,8 +3,8 @@
 ///
 use winnow::{
     ModalResult, Parser,
-    ascii::{alphanumeric0, digit1, line_ending, multispace1, space0, space1, till_line_ending},
-    combinator::{alt, eof, fail, not, opt, peek, preceded, repeat, repeat_till, separated, seq},
+    ascii::{alphanumeric0, digit1, line_ending, space0, space1, till_line_ending},
+    combinator::{alt, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq},
     error::{ContextError, ErrMode},
     stream::AsChar,
     token::{any, literal, one_of, take, take_till, take_until, take_while},
@@ -31,54 +31,66 @@ const MARKERS: [&str; 17] = [
 const MAX_INDENTS: usize = 7;
 
 fn italics(input: &mut &str) -> ModalResult<Inline> {
-    let text = (literal("//"), take_until(0.., "//"), literal("//"))
+    let mut text = (literal("//"), take_until(0.., "//"), literal("//"))
         .parse_next(input)?
         .1;
-    Ok(Inline::Italics {
-        text: text.to_string(),
-    })
+
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Italics { inlines })
 }
 
 fn bold(input: &mut &str) -> ModalResult<Inline> {
-    let text = (literal("''"), take_until(0.., "''"), literal("''"))
+    let mut text = (literal("''"), take_until(0.., "''"), literal("''"))
         .parse_next(input)?
         .1;
 
-    Ok(Inline::Bold {
-        text: text.to_string(),
-    })
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Bold { inlines })
 }
 
 fn underlined(input: &mut &str) -> ModalResult<Inline> {
-    let text = (literal("__"), take_until(0.., "__"), literal("__"))
+    let mut text = (literal("__"), take_until(0.., "__"), literal("__"))
         .parse_next(input)?
         .1;
 
-    Ok(Inline::Underlined {
-        text: text.to_string(),
-    })
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Underlined { inlines })
 }
 
 fn superscript(input: &mut &str) -> ModalResult<Inline> {
     let marker = "^^";
-    let text = (literal(marker), take_until(0.., marker), literal(marker))
+    let mut text = (literal(marker), take_until(0.., marker), literal(marker))
         .parse_next(input)?
         .1;
 
-    Ok(Inline::Superscript {
-        text: text.to_string(),
-    })
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Superscript { inlines })
 }
 
 fn strikethrough(input: &mut &str) -> ModalResult<Inline> {
     let marker = "~~";
-    let text = (literal(marker), take_until(0.., marker), literal(marker))
+    let mut text = (literal(marker), take_until(0.., marker), literal(marker))
         .parse_next(input)?
         .1;
 
-    Ok(Inline::Strikethrough {
-        text: text.to_string(),
-    })
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Strikethrough { inlines })
+}
+
+fn highlight(input: &mut &str) -> ModalResult<Inline> {
+    let marker = "@@";
+    let mut text = (literal(marker), take_until(0.., marker), literal(marker))
+        .parse_next(input)?
+        .1;
+
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Highlight { inlines })
 }
 
 fn code(input: &mut &str) -> ModalResult<Inline> {
@@ -88,17 +100,6 @@ fn code(input: &mut &str) -> ModalResult<Inline> {
         .1;
 
     Ok(Inline::Code {
-        text: text.to_string(),
-    })
-}
-
-fn highlight(input: &mut &str) -> ModalResult<Inline> {
-    let marker = "@@";
-    let text = (literal(marker), take_until(0.., marker), literal(marker))
-        .parse_next(input)?
-        .1;
-
-    Ok(Inline::Highlight {
         text: text.to_string(),
     })
 }
@@ -159,13 +160,12 @@ fn heading(input: &mut &str) -> ModalResult<Inline> {
     let _space = space1.parse_next(input)?;
 
     // 3. Consume everything else on the line as the heading text
-    // let text = rest.parse_next(input)?.to_string();
-    let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+    let mut text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
 
-    Ok(Inline::Heading {
-        level,
-        text: text.to_string(),
-    })
+    // 4. Convert the text to inlines
+    let inlines = parse_formatting(&mut text)?;
+
+    Ok(Inline::Heading { level, inlines })
 }
 
 fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
@@ -485,9 +485,9 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
             let code_markdown = take_till(1.., '`').parse_next(input)?;
 
             take(1usize).parse_next(input)?;
-            contents.push_str("`");
+            contents.push('`');
             contents.push_str(code_markdown);
-            contents.push_str("`");
+            contents.push('`');
         }
 
         if marker == "|" {
@@ -496,6 +496,8 @@ fn table_cell(input: &mut &str) -> ModalResult<TableCell> {
             let mut inlines =
                 parse_table_cell_contents(&mut contents.as_str()).unwrap_or(Vec::new());
 
+            // Not using the unstable unwrap_or_default
+            #[allow(clippy::unwrap_or_default)]
             let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
 
             // Handle the horizonal alignment seperately by looking for spaces at
@@ -787,6 +789,16 @@ fn transclusion(input: &mut &str) -> ModalResult<Inline> {
     })
 }
 
+// This recursively parses the nested formatting
+pub fn parse_formatting(input: &mut &str) -> ModalResult<Vec<Inline>> {
+    let (inlines, _) = repeat_till(0.., alt((formatting, link, plaintext)), eof)
+        .map(|v: (Vec<Inline>, _)| v)
+        .parse_next(input)?;
+
+    Ok(inlines)
+}
+
+// All of these are recursive
 fn formatting(input: &mut &str) -> ModalResult<Inline> {
     alt((
         italics,
@@ -879,15 +891,7 @@ fn number_ordered_lists(inlines: &mut [Inline]) {
                 prev_numbering = Some(numbering.clone());
                 inbetweens.clear();
             }
-            Inline::PlainText { text }
-            | Inline::Bold { text }
-            | Inline::Italics { text }
-            | Inline::Underlined { text }
-            | Inline::Superscript { text }
-            | Inline::Subscript { text }
-            | Inline::Strikethrough { text }
-            | Inline::Code { text }
-            | Inline::Highlight { text } => {
+            Inline::PlainText { text } => {
                 // Count line breaks in the inlines between the ordered list entries. If there are more
                 //  then one then reset the counting
                 inbetweens.push_str(text);
@@ -896,9 +900,18 @@ fn number_ordered_lists(inlines: &mut [Inline]) {
                     inbetweens.clear();
                 }
             }
-            // A link has no \n
-            Inline::Link { .. } => (),
-            _ => prev_numbering = None,
+            _ => (),
+            // Inline::Bold { inlines }
+            // | Inline::Italics { inlines }
+            // | Inline::Underlined { inlines }
+            // | Inline::Superscript { inlines }
+            // | Inline::Subscript { inlines }
+            // | Inline::Strikethrough { inlines }
+
+            // | Inline::Highlight { inlines } =>  (),
+
+            // Inline::Link { .. }  | Inline::Code { text }=> (),
+            // _ => prev_numbering = None,
         }
     }
 }
@@ -940,14 +953,15 @@ mod tests {
         let r = parse_tiddler(&mut text);
 
         let v = r.unwrap();
-        assert_eq!(v.len(), 3);
+
+        // assert_eq!(v.len(), 3);
 
         let expected: Vec<Inline> = vec![
             Inline::PlainText {
                 text: "Text that has ".to_string(),
             },
             Inline::Bold {
-                text: "bold text".to_string(),
+                inlines: vec![Inline::plaintext("bold text")],
             },
             Inline::PlainText {
                 text: " in it.".to_string(),
@@ -973,13 +987,13 @@ mod tests {
                 text: "Some text with a mixture of ".to_string(),
             },
             Inline::Italics {
-                text: "italicised text".to_string(),
+                inlines: vec![Inline::plaintext("italicised text")],
             },
             Inline::PlainText {
                 text: " and also ".to_string(),
             },
             Inline::Bold {
-                text: "some bold text".to_string(),
+                inlines: vec![Inline::plaintext("some bold text")],
             },
             Inline::PlainText {
                 text: " in it.".to_string(),
@@ -1044,6 +1058,42 @@ mod tests {
         ];
 
         assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_nested() {
+        let mut input = "//nested ''bold'' text//";
+
+        let inline = italics(&mut input).unwrap();
+
+        let expected = Inline::Italics {
+            inlines: vec![
+                Inline::plaintext("nested "),
+                Inline::bold("bold"),
+                Inline::plaintext(" text"),
+            ],
+        };
+
+        assert_eq!(inline, expected);
+    }
+
+    #[test]
+    fn test_nested_to_3_levels() {
+        let mut input = "//nested ''bold __underlined__'' text//";
+
+        let inline = italics(&mut input).unwrap();
+
+        let expected = Inline::Italics {
+            inlines: vec![
+                Inline::plaintext("nested "),
+                Inline::Bold {
+                    inlines: vec![Inline::plaintext("bold "), Inline::underlined("underlined")],
+                },
+                Inline::plaintext(" text"),
+            ],
+        };
+
+        assert_eq!(inline, expected);
     }
 
     #[test]
@@ -1647,7 +1697,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_wiki_text() {
+    fn test_parse_tiddler() {
         let mut text = "Hello world\n ''bold''";
 
         let inlines = parse_tiddler(&mut text).unwrap();
@@ -1657,7 +1707,7 @@ mod tests {
                 text: "Hello world\n ".to_string(),
             },
             Inline::Bold {
-                text: "bold".to_string(),
+                inlines: vec![Inline::plaintext("bold")],
             },
         ];
         assert_eq!(inlines, expected);
