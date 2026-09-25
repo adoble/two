@@ -130,22 +130,28 @@ fn blockquote(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn codeblock(input: &mut &str) -> ModalResult<Inline> {
-    let marker = "```";
+    let start_marker = "```";
+    let end_marker = "\n```";
 
     // let r = delimited(marker, alphanumeric0, line_ending);
 
-    let language = preceded(marker, alphanumeric0).parse_next(input)?;
-    let code = take_until(0.., marker).parse_next(input)?;
+    let language = preceded(start_marker, alphanumeric0).parse_next(input)?;
+    // let code = take_until(0.., marker).parse_next(input)?;
+    let code = take_until(0.., end_marker).parse_next(input)?;
     // Consume the remaining marker.
-    literal(marker).parse_next(input)?;
+    literal(end_marker).parse_next(input)?;
 
     // Remove any leading new lines
     let code = code.trim_start_matches(['\n', '\r']);
 
     let language_option = (!language.is_empty()).then(|| language.trim().to_string());
 
+    // Now add back the '\n' character at the end of the code
+    let mut text = code.to_string();
+    text.push('\n');
+
     Ok(Inline::CodeBlock {
-        text: code.to_string(),
+        text,
         language: language_option,
     })
 }
@@ -1313,6 +1319,21 @@ mod tests {
             Inline::codeblock(expected_code, "rust"),
             Inline::plaintext("\n"),
         ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_embedded_code_blocks() {
+        // Code blocks may have code examples that contain the  code block markdown. This should be ignored.
+
+        let mut text = "```rust\n//!```\n//!code example\n//!```\n```";
+        let v = parse_tiddler(&mut text).unwrap();
+
+        let expected: Vec<Inline> = vec![Inline::codeblock(
+            "//!```\n//!code example\n//!```\n",
+            "rust",
+        )];
 
         assert_eq!(v, expected);
     }
