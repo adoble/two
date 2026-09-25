@@ -3,6 +3,9 @@ use std::io::prelude::*;
 
 use anyhow::Result;
 
+// For decoding images
+use base64::{Engine as _, engine::general_purpose};
+
 mod tiddler;
 use tiddler::Tiddler;
 
@@ -63,25 +66,52 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
         return Ok(());
     }
 
-    if tiddler.title == "De-bouncing a push button using RTIC" {
-        println!("{}", tiddler.title);
-    };
+    match tiddler.tiddler_type.as_deref() {
+        None => {
+            info!("Generating: {} ", tiddler.title);
 
-    info!("Generating: {}", tiddler.title);
-    let file_name = format!("./output/{}.md", tiddler.title);
+            let mut input = tiddler.text.as_str();
+            let ast = parse_tiddler(&mut input).unwrap();
+            let markdown = Markdown::from_inlines(&ast).to_string();
+
+            let file_name = format!("./output/{}.md", tiddler.title);
+            let mut file = File::create(file_name).expect("Could not create file!");
+
+            file.write_all(markdown.as_bytes()).expect("write failed");
+        }
+
+        Some("text/x-markdown") => {
+            info!("Copying jpeg image : {}", tiddler.title);
+
+            let markdown = tiddler.text.as_str();
+
+            let file_name = format!("./output/{}.md", tiddler.title);
+            let mut file = File::create(file_name).expect("Could not create file!");
+
+            file.write_all(markdown.as_bytes()).expect("write failed");
+        }
+        Some("image/jpeg") => {
+            info!("Copying jpeg: {}", tiddler.title);
+            let base64_as_text = tiddler.text.as_str();
+            // Strip whitespace/newlines that may be present in the stored text
+            let cleaned: String = base64_as_text
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            let image_bytes = general_purpose::STANDARD.decode(cleaned)?;
+
+            let file_name = format!("./output/{}", tiddler.title);
+            let mut file = File::create(file_name).expect("Could not create file!");
+
+            file.write(&image_bytes)?;
+        }
+        Some(other) => error!(
+            "Cannot handle tiddler type {} for tiddler {}",
+            other, tiddler.title
+        ),
+    }
 
     // Parse the tiddler text
-    let mut input = tiddler.text.as_str();
-    let ast = parse_tiddler(&mut input).unwrap();
-    let markdown = Markdown::from_inlines(&ast).to_string();
-
-    // let mut file = OpenOptions::new()
-    //     .append(true)
-    //     .open(file_name)
-    //     .expect("cannot open file");
-    let mut file = File::create(file_name).expect("Could not create file!");
-
-    file.write_all(markdown.as_bytes()).expect("write failed");
 
     Ok(())
 }

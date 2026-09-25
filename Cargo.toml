@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+base64 = "0.23.1"
 #log = "0.4.33"
 log = "0.4.34"
 serde = {version =  "1.0.228", features=["derive"]}
