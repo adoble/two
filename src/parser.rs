@@ -797,7 +797,7 @@ fn transclusion(input: &mut &str) -> ModalResult<Inline> {
 
 // This recursively parses the nested formatting
 pub fn parse_formatting(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    let (inlines, _) = repeat_till(0.., alt((formatting, link, plaintext)), eof)
+    let (inlines, _) = repeat_till(0.., alt((code, formatting, link, plaintext)), eof)
         .map(|v: (Vec<Inline>, _)| v)
         .parse_next(input)?;
 
@@ -1100,6 +1100,25 @@ mod tests {
         };
 
         assert_eq!(inline, expected);
+    }
+
+    #[test]
+    fn test_nested_code() {
+        // Two code inlines in a bold
+        let mut input = "''Function can be called with either a `String` or a `&str` ''";
+
+        let inlines = parse_formatting(&mut input).unwrap();
+        let expected = vec![Inline::Bold {
+            inlines: vec![
+                Inline::plaintext("Function can be called with either a "),
+                Inline::code("String"),
+                Inline::plaintext(" or a "),
+                Inline::code("&str"),
+                Inline::plaintext(" "),
+            ],
+        }];
+
+        assert_eq!(inlines, expected);
     }
 
     #[test]
