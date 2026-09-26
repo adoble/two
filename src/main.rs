@@ -69,7 +69,7 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     let converted_tiddler_title = map_name(&tiddler.title);
 
     match tiddler.tiddler_type.as_deref() {
-        None => {
+        None | Some("") | Some("text/vnd.tiddlywiki") => {
             info!("Generating: {} ", tiddler.title);
 
             let mut input = tiddler.text.as_str();
@@ -77,9 +77,9 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
             let markdown = Markdown::from_inlines(&ast).to_string();
 
             let file_name = format!("./output/{}.md", converted_tiddler_title);
-            let mut file = File::create(file_name).expect("Could not create file!");
+            let mut file = File::create(file_name)?;
 
-            file.write_all(markdown.as_bytes()).expect("write failed");
+            file.write_all(markdown.as_bytes())?;
         }
 
         Some("text/x-markdown") => {
@@ -88,9 +88,9 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
             let markdown = tiddler.text.as_str();
 
             let file_name = format!("./output/{}.md", converted_tiddler_title);
-            let mut file = File::create(file_name).expect("Could not create file!");
+            let mut file = File::create(file_name)?;
 
-            file.write_all(markdown.as_bytes()).expect("write failed");
+            file.write_all(markdown.as_bytes())?;
         }
         Some(mime @ ("image/jpeg" | "image/png")) => {
             info!("Copying {}: {}", mime, tiddler.title);
@@ -101,6 +101,16 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
             let mut file = File::create(file_name)?;
 
             file.write_all(&image_bytes)?;
+        }
+        Some("image/svg+xml") => {
+            info!("Copying SVG : {}", tiddler.title);
+
+            let markdown = tiddler.text.as_str();
+
+            let file_name = format!("./output/{}", converted_tiddler_title);
+            let mut file = File::create(file_name)?;
+
+            file.write_all(markdown.as_bytes())?;
         }
 
         Some(other) => error!(
