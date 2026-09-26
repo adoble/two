@@ -57,7 +57,8 @@ impl Markdown {
             }
             Inline::Strikethrough { inlines } => format!("~~{}~~", self.convert_inlines(inlines)),
             Inline::Highlight { inlines } => format!("=={}==", self.convert_inlines(inlines)),
-            Inline::Code { text } => Self::wrap_inlines("```", text),
+            // Inline::Code { text } => Self::wrap_inlines("```", text),
+            Inline::Code { text } => format!("`{}`", text),
             Inline::BlockQuote { text, citation } => Self::format_blockquote(text, citation),
 
             Inline::CodeBlock { text, language } => format!(
@@ -239,7 +240,7 @@ mod tests {
             (Inline::superscript("Test text"), "<sup>Test text</sup>"),
             (Inline::subscript("Test text"), "<sub>Test text</sub>"),
             (Inline::strikethrough("Test text"), "~~Test text~~"),
-            (Inline::code("Test text"), "```Test text```"),
+            (Inline::code("Test text"), "`Test text`"),
             (Inline::highlight("Test text"), "==Test text=="),
         ];
 
