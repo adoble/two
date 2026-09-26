@@ -17,11 +17,16 @@ use log::{debug, error, info};
 #[allow(unused_imports)]
 use winnow::combinator::trace;
 
-use crate::abstract_syntax::{
-    CellAlignment, CellHorizontalAlignment, CellVerticalAlignment, DimensionField, Dimensions,
-    Inline::{self, PlainText},
-    TableCell, TableRow,
+use crate::{
+    abstract_syntax::{
+        CellAlignment, CellHorizontalAlignment, CellVerticalAlignment, DimensionField, Dimensions,
+        Inline::{self, PlainText},
+        TableCell, TableRow,
+    },
+    naming::map_name,
 };
+
+// use crate::naming;
 
 const MARKERS: [&str; 17] = [
     "//", "''", "__", "^^", "~~", "`", "@@", "<<<", "```", "*", "#", "[img", "[[", "{{", "|",
@@ -629,7 +634,7 @@ fn simple_link(input: &mut &str) -> ModalResult<Inline> {
     // approach gave problems in parsing many links
     let parts: Vec<&str> = link_statement.split('|').collect();
 
-    let (link, display_text) = match parts.len() {
+    let (mut link, display_text) = match parts.len() {
         1 => (parts[0].to_string(), None),
         2 => (parts[1].to_string(), Some(parts[0].to_string())),
         _ => {
@@ -639,6 +644,10 @@ fn simple_link(input: &mut &str) -> ModalResult<Inline> {
 
     // Check if this is an external link.
     let external = Url::parse(&link).is_ok();
+
+    if !external {
+        link = map_name(&link);
+    }
 
     Ok(Inline::Link {
         display_text,
@@ -1551,6 +1560,15 @@ mod tests {
     }
 
     #[test]
+    fn test_link_with_forbibben_characters() {
+        let mut text = "[[The directory /home, is not ok]]";
+
+        let v = link(&mut text).unwrap();
+
+        assert_eq!(v, Inline::link("The directory -home- is not ok", ""));
+    }
+
+    #[test]
     fn test_mixed_links() {
         let mut input =
             "This is an inline [[link]] with some more text and [[another link|new link]]";
@@ -1607,9 +1625,20 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TO DO, Inlines containing Vec<Inline>"]
     fn test_external_link_highlighted() {
-        let _input = "**[[anyhow crate|https://crates.io/crates/Anyhow]]**";
+        let mut input = "''[[anyhow crate|https://crates.io/crates/Anyhow]]''";
+
+        let v = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![Inline::Bold {
+            inlines: vec![Inline::Link {
+                display_text: Some("anyhow crate".to_string()),
+                link: "https://crates.io/crates/Anyhow".to_string(),
+                external: true,
+            }],
+        }];
+
+        assert_eq!(v, expected);
     }
 
     #[test]
