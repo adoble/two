@@ -83,7 +83,7 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
         }
 
         Some("text/x-markdown") => {
-            info!("Copying jpeg image : {}", tiddler.title);
+            info!("Copying markdown : {}", tiddler.title);
 
             let markdown = tiddler.text.as_str();
 
@@ -92,21 +92,17 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
 
             file.write_all(markdown.as_bytes()).expect("write failed");
         }
-        Some("image/jpeg") => {
-            info!("Copying jpeg: {}", tiddler.title);
-            let base64_as_text = tiddler.text.as_str();
-            // Strip whitespace/newlines that may be present in the stored text
-            let cleaned: String = base64_as_text
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect();
-            let image_bytes = general_purpose::STANDARD.decode(cleaned)?;
+        Some(mime @ ("image/jpeg" | "image/png")) => {
+            info!("Copying {}: {}", mime, tiddler.title);
+
+            let image_bytes = convert_image(&tiddler.text)?;
 
             let file_name = format!("./output/{}", converted_tiddler_title);
-            let mut file = File::create(file_name).expect("Could not create file!");
+            let mut file = File::create(file_name)?;
 
-            file.write(&image_bytes)?;
+            file.write_all(&image_bytes)?;
         }
+
         Some(other) => error!(
             "Cannot handle tiddler type {} for tiddler {}",
             other, tiddler.title
@@ -116,4 +112,15 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
     // Parse the tiddler text
 
     Ok(())
+}
+
+fn convert_image(base64_as_text: &str) -> Result<Vec<u8>> {
+    // Strip whitespace/newlines that may be present in the stored text
+    let cleaned: String = base64_as_text
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    let image_bytes = general_purpose::STANDARD.decode(cleaned)?;
+
+    Ok(image_bytes)
 }

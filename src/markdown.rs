@@ -100,14 +100,6 @@ impl Markdown {
         }
     }
 
-    fn wrap_inlines(marker: &str, text: &str) -> String {
-        let mut s = String::new();
-        s.push_str(marker);
-        s.push_str(text);
-        s.push_str(marker);
-        s
-    }
-
     fn format_link(link: &String, display_text: &Option<String>, external: &bool) -> String {
         let mut markdown = String::new();
 
