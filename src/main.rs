@@ -1,7 +1,10 @@
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+
+use clap::Parser;
 
 // For decoding images
 use base64::{Engine as _, engine::general_purpose};
@@ -17,19 +20,38 @@ mod naming;
 #[allow(unused_imports)]
 use log::{debug, error, info, log_enabled};
 
-use crate::{naming::map_name, parser::parse_tiddler};
-
 mod parser;
 
 mod abstract_syntax;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// The path to the TiddlyWiki to read and convert.
+    in_path: std::path::PathBuf,
+
+    /// The path where the obsidian files are  generated.
+    #[arg(short = 'o', long = "output")]
+    out_path: std::path::PathBuf,
+    //     /// Name of the tiddle to be converted. If not speicifed all of the tiddlers
+    //     /// are converted.
+    //     #[arg(short = 't', long = "tiddler")]
+    //     tiddler_name: Option<String>,
+}
 
 fn main() {
     simple_logger::init_with_level(log::Level::Debug).unwrap();
 
     info!("TiddlyWiki to Obsidian");
 
+    let args = Cli::parse();
+
     //let mut tw_file = File::open("./tiddlywiki/empty.html").unwrap();
-    let mut tw_file = File::open("/home/andrew/Downloads/SoftwareTools.html").unwrap();
+    //let mut tw_file = File::open("/home/andrew/Downloads/SoftwareTools.html").unwrap();
+
+    debug!("Input file: {}", args.in_path.display());
+
+    let mut tw_file = File::open(&args.in_path).unwrap();
     let mut tw_string = String::new();
     tw_file.read_to_string(&mut tw_string).unwrap();
 
@@ -42,8 +64,25 @@ fn main() {
         .filter(|t| !t.title.starts_with("$:/"))
         .collect();
 
+    // Create the output directory
+    std::fs::create_dir_all(&args.out_path).expect(&format!(
+        "Cannot create directory {}",
+        args.out_path.display()
+    ));
+
     for tiddler in filtered_tiddlers {
-        create_tiddler_file(tiddler).unwrap();
+        // As the parser can sometimes panic (rather than returning a error) need to catch this so that
+        // other tiddlers can still be processed.
+        let result = std::panic::catch_unwind(|| create_tiddler_file(tiddler, &args.out_path));
+
+        match result {
+            Ok(Ok(())) => (),
+            Ok(Err(e)) => error!("Cannot convert tiddler {}: Error {:?}", tiddler.title, e),
+            Err(_) => error!(
+                "{}: Parser panicked (likely zero-consumption repeat)",
+                tiddler.title
+            ),
+        }
     }
 }
 
@@ -55,29 +94,23 @@ fn extract_tiddler_json(html: &str) -> Option<&str> {
     Some(html[tag_close..end_idx].trim())
 }
 
-fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
-    // TODO file name from cli
+fn create_tiddler_file(tiddler: &Tiddler, out_dir: &Path) -> Result<()> {
+    if tiddler.title == "Markup Reference" {
+        println!("Markup reference");
+    }
 
-    // if tiddler.title.contains([':', '/', '\\']) {
-    //     error!(
-    //         "Tiddler [{}] cannot be converted as the title contains either :', '/', or '\\'",
-    //         tiddler.title
-    //     );
-    //     return Ok(());
-    // }
-
-    let converted_tiddler_title = map_name(&tiddler.title);
+    let converted_tiddler_title = naming::map_name(&tiddler.title);
 
     match tiddler.tiddler_type.as_deref() {
         None | Some("") | Some("text/vnd.tiddlywiki") => {
             info!("Generating: {} ", tiddler.title);
 
             let mut input = tiddler.text.as_str();
-            let ast = parse_tiddler(&mut input).unwrap();
+            let ast = parser::parse(&mut input)?;
             let markdown = Markdown::from_inlines(&ast).to_string();
 
-            let file_name = format!("./output/{}.md", converted_tiddler_title);
-            let mut file = File::create(file_name)?;
+            let path = out_dir.join(format!("{}.md", converted_tiddler_title));
+            let mut file = File::create(path)?;
 
             file.write_all(markdown.as_bytes())?;
         }
@@ -87,8 +120,8 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
 
             let markdown = tiddler.text.as_str();
 
-            let file_name = format!("./output/{}.md", converted_tiddler_title);
-            let mut file = File::create(file_name)?;
+            let path = out_dir.join(format!("{}.md", converted_tiddler_title));
+            let mut file = File::create(path)?;
 
             file.write_all(markdown.as_bytes())?;
         }
@@ -97,8 +130,13 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
 
             let image_bytes = convert_image(&tiddler.text)?;
 
-            let file_name = format!("./output/{}", converted_tiddler_title);
-            let mut file = File::create(file_name)?;
+            // let (_, extension) = mime
+            //     .split_once('/')
+            //     .ok_or_else(|| anyhow::anyhow!("malformed MIMI type: {mime}"))?;
+
+            //let path = out_dir.join(format!("{}.{}", converted_tiddler_title, extension));
+            let path = out_dir.join(converted_tiddler_title);
+            let mut file = File::create(path)?;
 
             file.write_all(&image_bytes)?;
         }
@@ -107,8 +145,9 @@ fn create_tiddler_file(tiddler: &Tiddler) -> Result<()> {
 
             let markdown = tiddler.text.as_str();
 
-            let file_name = format!("./output/{}", converted_tiddler_title);
-            let mut file = File::create(file_name)?;
+            let path = out_dir.join(format!("{}", converted_tiddler_title));
+
+            let mut file = File::create(path)?;
 
             file.write_all(markdown.as_bytes())?;
         }
