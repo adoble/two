@@ -182,26 +182,40 @@ fn heading(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
-    // 1. Count the number of asterixs (1 to 6) to determine the list level
-    let asterixes: Vec<char> = repeat(1..=6, one_of('*')).parse_next(input)?;
-    let level = asterixes.len();
+    // Lists always start on a new line
+    "\n".parse_next(input)?;
 
-    // 2. Consume any whitespace separating the * and the text
-    let _space = opt(space1).parse_next(input)?;
+    // Consume any white space before the asterisk
+    space0.parse_next(input)?;
 
-    // // 3. Consume everything else on the line as the list item text
-    // let text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
+    // Count the number of asterisks (1 to 6) to determine the list level
+    let asterisks: Vec<char> = repeat(1..=6, one_of('*')).parse_next(input)?;
+    let level = asterisks.len();
+
+    // Consume any whitespace separating the * and the text.
+    // Note in tiddlywiki there does not need to be space between
+    // the asterisk and the text.
+    //let _space = opt(space1).parse_next(input)?;
+    let _space = space0.parse_next(input)?;
 
     Ok(Inline::UnorderedList { level })
 }
 
 fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
-    // Count the number of asterixs (1 to 6) to determine the list level
+    // Lists always start on a new line
+    "\n".parse_next(input)?;
+
+    // Consume any white space before the hash
+
+    space0.parse_next(input)?;
+    // Count the number of hashes (1 to 6) to determine the list level
     let hashes: Vec<char> = repeat(1..=6, one_of('#')).parse_next(input)?;
     let level = hashes.len();
 
-    // Consume the required trailing whitespace separating the # and the text
-    let _space = space1.parse_next(input)?;
+    // Consume the whitespace separating the # and the text.
+    // Note in tiddlywiki there does not need to be space between
+    // the hash and the text.
+    let _space = space0.parse_next(input)?;
 
     Ok(Inline::OrderedList {
         level,
@@ -364,84 +378,10 @@ fn starts_with_capital(word: &str) -> bool {
     word.chars().next().is_some_and(|c| c.is_uppercase())
 }
 
-// #[deprecated]
-// fn table_cell_old(input: &mut &str) -> ModalResult<TableCell> {
-//     let start = Instant::now();
-
-//     let alignment = opt(vertical_alignment).parse_next(input)?;
-//     let leading_spaces = space0.parse_next(input)?;
-//     let header = opt("!").parse_next(input)?;
-//     let mut inlines = repeat_till(
-//         1..,
-//         alt((code, link, formatting, cell_text)),
-//         alt((cell_delimiter, end_of_text)),
-//     )
-//     .map(|v: (Vec<Inline>, Inline)| v.0)
-//     .parse_next(input)?;
-
-//     let mut alignment = alignment.map_or(CellAlignment::default(), |a| a);
-
-//     // Handle the horizonal alignment seperately by looking for spaces at
-//     // the start and end of the contents. Two complications:
-//     // 1)  the leading spaces are consumed by the parser, so use the value returned by it and check the last character
-//     // 2) The contents are really inlines, so need to find the last one.
-//     let start_space = !leading_spaces.is_empty();
-//     let end_space = if let Some(Inline::PlainText { text }) = inlines.last() {
-//         text.ends_with(' ')
-//     } else {
-//         false
-//     };
-
-//     let horizontal_alignment = match (start_space, end_space) {
-//         (true, true) => CellHorizontalAlignment::Center,
-//         (true, false) => CellHorizontalAlignment::Right,
-//         (false, true) => CellHorizontalAlignment::Left,
-//         _ => CellHorizontalAlignment::default(),
-//     };
-//     alignment.horizontal = horizontal_alignment;
-
-//     let header = header == Some("!");
-
-//     // Trim single spaces at the end of the content as these only refer to the alignment.
-//     // Any aligment space at the start has been consumed by the parser
-
-//     if let Some(Inline::PlainText { text }) = inlines.last() {
-//         let trimmed_text = trim_single_trailing_whitespace(text.clone());
-//         // Remove the last plain text element of the inlines and replace it
-//         // with the trimmed version unless if is empty
-//         inlines.pop();
-//         if !trimmed_text.is_empty() {
-//             inlines.push(PlainText { text: trimmed_text });
-//         }
-//     }
-
-//     // TODO not doing merges at the moment
-
-//     let table_cell = TableCell {
-//         contents: inlines,
-//         alignment,
-//         header,
-//         ..Default::default()
-//     };
-
-//     Ok(table_cell)
-// }
-
 fn cell_delimiter(input: &mut &str) -> ModalResult<Inline> {
     "|".parse_next(input)?;
     Ok(Inline::TableCellDelimiter)
 }
-
-// #[deprecated]
-// fn cell_text(input: &mut &str) -> ModalResult<Inline> {
-
-//     let (chars, _): (Vec<char>, _) =
-//         repeat_till(0.., any, peek(alt((inline, end_of_text)))).parse_next(input)?;
-
-//     let s: String = chars.into_iter().collect();
-
-//     Ok(Inline::PlainText { text: s })
-// }
 
 pub fn parse_table_cell_contents(input: &mut &str) -> ModalResult<Vec<Inline>> {
     let mut inlines = Vec::<Inline>::new();
@@ -877,12 +817,27 @@ fn parse_tiddler(input: &mut &str) -> ModalResult<Vec<Inline>> {
 }
 
 /// Parse a tiddler.
-/// Converts winnow errors to anyhow
+/// Converts winnow errors to anyhow.
 pub fn parse(input: &str) -> anyhow::Result<Vec<Inline>> {
-    let mut s = input;
-    parse_tiddler(&mut s)
+    // let mut s = input;
+
+    let tiddler = prepend_new_line(input);
+    let mut input: &str = tiddler.as_str();
+
+    parse_tiddler(&mut input)
         .map_err(|e| anyhow::anyhow!("{e}"))
         .with_context(|| "failed to parse tiddler")
+}
+
+/// To distinguish some markers (such  as lists) these should be on a new line.
+/// A complication: Although new lines can be detected by finding a '\n' character, this doesn't work if
+/// they are on the first line in the tiddler. To solve this a '\n' character is injected at the
+/// front of each tiddler. This then needs to be removed.
+fn prepend_new_line(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + '\n'.len_utf8());
+    out.push('\n');
+    out.push_str(text);
+    out
 }
 
 // Helper function
@@ -1796,7 +1751,7 @@ mod tests {
 
     #[test]
     fn test_unordered_list_direct() {
-        let mut text = "* List Level 1";
+        let mut text = "\n* List Level 1";
 
         let r = unordered_list(&mut text);
 
@@ -1806,7 +1761,7 @@ mod tests {
 
         assert_eq!(inline, Inline::unordered_list(1));
 
-        let mut text = "*** List Level 3";
+        let mut text = "\n*** List Level 3";
 
         let r = unordered_list(&mut text);
 
@@ -1816,7 +1771,7 @@ mod tests {
 
         assert_eq!(inline, Inline::unordered_list(3));
 
-        let mut text = "****** List Level 6";
+        let mut text = "\n****** List Level 6";
 
         let r = unordered_list(&mut text);
 
@@ -1826,8 +1781,8 @@ mod tests {
 
         assert_eq!(inline, Inline::unordered_list(6));
 
-        // In tiddywiki there does not need to be a space between the asterix and the text
-        let mut text = "*list point";
+        // In tiddywiki there does not need to be a space between the asterisk and the text
+        let mut text = "\n*list point";
         let r = unordered_list(&mut text);
         assert!(r.is_ok());
         let inline = r.unwrap();
@@ -1840,22 +1795,37 @@ mod tests {
             "The following points:\n",
             "* The most important\n",
             "* Not so important\n",
-            "** Why this is not important",
+            "** Why this is not important\n",
             "*No intervening spaces",
         );
 
         let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
-            Inline::plaintext("The following points:\n"),
+            Inline::plaintext("The following points:"),
             Inline::unordered_list(1),
-            Inline::plaintext("The most important\n"),
+            Inline::plaintext("The most important"),
             Inline::unordered_list(1),
-            Inline::plaintext("Not so important\n"),
+            Inline::plaintext("Not so important"),
             Inline::unordered_list(2),
             Inline::plaintext("Why this is not important"),
             Inline::unordered_list(1),
             Inline::plaintext("No intervening spaces"),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_unordered_list_marker_in_text() {
+        let mut input = "An asterisk superscript^^*^^ - Some more text";
+
+        let v = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("An asterisk superscript"),
+            Inline::superscript("*"),
+            Inline::plaintext(" - Some more text"),
         ];
 
         assert_eq!(v, expected);
@@ -1873,11 +1843,11 @@ mod tests {
         let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
-            Inline::plaintext("The following points:\n"),
+            Inline::plaintext("The following points:"),
             Inline::ordered_list(1, "1"),
-            Inline::plaintext("The most important\n"),
+            Inline::plaintext("The most important"),
             Inline::ordered_list(1, "2"),
-            Inline::plaintext("Not so important\n"),
+            Inline::plaintext("Not so important"),
             Inline::ordered_list(2, "2.1"),
             Inline::plaintext("Why this is not important"),
         ];
@@ -1888,6 +1858,7 @@ mod tests {
     #[test]
     fn test_ordered_list_numbering() {
         let mut text = concat!(
+            "\n",
             "# first\n",
             "# second\n",
             "## subpoint1\n",
@@ -1898,15 +1869,30 @@ mod tests {
 
         let expected = vec![
             Inline::ordered_list(1, "1"),
-            Inline::plaintext("first\n"),
+            Inline::plaintext("first"),
             Inline::ordered_list(1, "2"),
-            Inline::plaintext("second\n"),
+            Inline::plaintext("second"),
             Inline::ordered_list(2, "2.1"),
-            Inline::plaintext("subpoint1\n"),
+            Inline::plaintext("subpoint1"),
             Inline::ordered_list(2, "2.2"),
-            Inline::plaintext("subpoint2\n"),
+            Inline::plaintext("subpoint2"),
             Inline::ordered_list(1, "3"),
             Inline::plaintext("third\n"),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_ordered_list_marker_in_text() {
+        let mut input = "A hash in bold ''#'' - Some more text";
+
+        let v = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![
+            Inline::plaintext("A hash in bold "),
+            Inline::bold("#"),
+            Inline::plaintext(" - Some more text"),
         ];
 
         assert_eq!(v, expected);
