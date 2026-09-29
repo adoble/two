@@ -12,6 +12,8 @@ use winnow::{
 
 use url::Url;
 
+use anyhow::Context;
+
 #[allow(unused_imports)]
 use log::{debug, error, info};
 #[allow(unused_imports)]
@@ -848,11 +850,12 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
     alt((
         codeblock, // Put at the top as it consumes all markers
         code,      // Put second as it also consumes all markers
-        structure,
+        // structure,
         link,
         transclusion,
         image,
         formatting,
+        structure,
         table,
     ))
     .parse_next(input)
@@ -862,7 +865,7 @@ fn wiki_text(input: &mut &str) -> ModalResult<Inline> {
     alt((inline, plaintext)).parse_next(input)
 }
 
-pub fn parse_tiddler(input: &mut &str) -> ModalResult<Vec<Inline>> {
+fn parse_tiddler(input: &mut &str) -> ModalResult<Vec<Inline>> {
     //let mut inlines = repeat_till(0.., inline, eof)
     let mut inlines = repeat_till(0.., wiki_text, eof)
         .map(|v: (Vec<Inline>, _)| v)
@@ -871,6 +874,15 @@ pub fn parse_tiddler(input: &mut &str) -> ModalResult<Vec<Inline>> {
     number_ordered_lists(&mut inlines.0);
 
     Ok(inlines.0)
+}
+
+/// Parse a tiddler.
+/// Converts winnow errors to anyhow
+pub fn parse(input: &str) -> anyhow::Result<Vec<Inline>> {
+    let mut s = input;
+    parse_tiddler(&mut s)
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .with_context(|| "failed to parse tiddler")
 }
 
 // Helper function
