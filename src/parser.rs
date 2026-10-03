@@ -164,18 +164,18 @@ fn codeblock(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn heading(input: &mut &str) -> ModalResult<Inline> {
-    // 1. Count the number of hashes (1 to 6) to determine the heading level
+    // Count the number of hashes (1 to 6) to determine the heading level
     //let hashes: Vec<char> = repeat(1..=6, one_of('!')).parse_next(input)?;
     let hashes: Vec<char> = repeat(1..=6, '!').parse_next(input)?;
     let level = hashes.len();
 
-    // 2. Consume the required trailing whitespace separating the # and the text
+    // Consume the required trailing whitespace separating the # and the text
     let _space = space1.parse_next(input)?;
 
-    // 3. Consume everything else on the line as the heading text
+    // Consume everything else on the line as the heading text
     let mut text = take_till(0.., |c| c == '\n' || c == '\r').parse_next(input)?;
 
-    // 4. Convert the text to inlines
+    //  Convert the text to inlines
     let inlines = parse_formatting(&mut text)?;
 
     Ok(Inline::Heading { level, inlines })
@@ -1813,6 +1813,26 @@ mod tests {
         ];
 
         assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_list_following_directly_another_inline() {
+        let mut input = concat!(
+            "! Pull Requests\n",
+            "*  [[Checking out pull requests locally]]"
+        );
+
+        let inlines = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![
+            Inline::heading("Pull Requests", 1),
+            Inline::unordered_list_with_inlines(
+                1,
+                vec![Inline::link("Checking out pull requests locally", "")],
+            ),
+        ];
+
+        assert_eq!(inlines, expected);
     }
 
     #[test]

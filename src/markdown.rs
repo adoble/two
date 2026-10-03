@@ -67,7 +67,7 @@ impl Markdown {
                 text
             ),
             Inline::Heading { inlines, level } => {
-                format!("{} {}", "#".repeat(*level), self.convert_inlines(inlines))
+                format!("{} {}\n", "#".repeat(*level), self.convert_inlines(inlines))
             }
             Inline::Image {
                 width,
@@ -277,11 +277,11 @@ mod tests {
     fn test_heading() {
         let mut markdown = Markdown::new();
         markdown.append(&Inline::heading("Title", 1));
-        assert_eq!(markdown.to_string(), "# Title");
+        assert_eq!(markdown.to_string(), "# Title\n");
 
         let mut markdown = Markdown::new();
         markdown.append(&Inline::heading("Subheading", 3));
-        assert_eq!(markdown.to_string(), "### Subheading");
+        assert_eq!(markdown.to_string(), "### Subheading\n");
     }
 
     #[test]
@@ -355,6 +355,28 @@ mod tests {
 
         let expected = concat!(
             "The following points:\n",
+            "- The most important\n",
+            "- Not so important\n",
+            "\t- Why this is not important\n"
+        );
+
+        let markdown = Markdown::from_inlines(&inlines);
+
+        let contents = markdown.to_string();
+        assert_eq!(contents, expected);
+    }
+
+    #[test]
+    fn test_unordered_list_following_heading() {
+        let inlines: Vec<Inline> = vec![
+            Inline::heading("A title", 1),
+            Inline::unordered_list(1, "The most important"),
+            Inline::unordered_list(1, "Not so important"),
+            Inline::unordered_list(2, "Why this is not important"),
+        ];
+
+        let expected = concat!(
+            "# A title\n",
             "- The most important\n",
             "- Not so important\n",
             "\t- Why this is not important\n"
