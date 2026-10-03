@@ -195,10 +195,18 @@ fn unordered_list(input: &mut &str) -> ModalResult<Inline> {
     // Consume any whitespace separating the * and the text.
     // Note in tiddlywiki there does not need to be space between
     // the asterisk and the text.
-    //let _space = opt(space1).parse_next(input)?;
-    let _space = space0.parse_next(input)?;
+    space0.parse_next(input)?;
 
-    Ok(Inline::UnorderedList { level })
+    // Now extract the text
+    let (chars, _) = repeat_till(0.., any, peek(alt(("\n", eof))))
+        .map(|v: (Vec<char>, _)| v)
+        .parse_next(input)?;
+    let text: String = chars.into_iter().collect();
+
+    // Parse the formatting in the text
+    let inlines = parse_formatting(&mut text.as_str())?;
+
+    Ok(Inline::UnorderedList { level, inlines })
 }
 
 fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
@@ -217,8 +225,18 @@ fn ordered_list(input: &mut &str) -> ModalResult<Inline> {
     // the hash and the text.
     let _space = space0.parse_next(input)?;
 
+    // Now extract the text
+    let (chars, _) = repeat_till(0.., any, peek(alt(("\n", eof))))
+        .map(|v: (Vec<char>, _)| v)
+        .parse_next(input)?;
+    let text: String = chars.into_iter().collect();
+
+    // Parse the formatting in the text
+    let inlines = parse_formatting(&mut text.as_str())?;
+
     Ok(Inline::OrderedList {
         level,
+        inlines,
         //  text: text.to_string(),
         numbering: Vec::new(),
     })
@@ -852,11 +870,12 @@ fn trim_single_trailing_whitespace(mut s: String) -> String {
 // fn number_ordered_lists(inlines: &mut Vec<Inline>) {
 fn number_ordered_lists(inlines: &mut [Inline]) {
     let mut prev_numbering: Option<Vec<usize>> = None;
-    let mut inbetweens = String::new();
 
     for inline in inlines.iter_mut() {
         match inline {
-            Inline::OrderedList { level, numbering } => {
+            Inline::OrderedList {
+                level, numbering, ..
+            } => {
                 match &prev_numbering {
                     None => {
                         numbering.clear();
@@ -871,29 +890,11 @@ fn number_ordered_lists(inlines: &mut [Inline]) {
                     }
                 }
                 prev_numbering = Some(numbering.clone());
-                inbetweens.clear();
             }
-            Inline::PlainText { text } => {
-                // Count line breaks in the inlines between the ordered list entries. If there are more
-                //  then one then reset the counting
-                inbetweens.push_str(text);
-                if inbetweens.matches('\n').count() > 1 {
-                    prev_numbering = None;
-                    inbetweens.clear();
-                }
-            }
-            _ => (),
-            // Inline::Bold { inlines }
-            // | Inline::Italics { inlines }
-            // | Inline::Underlined { inlines }
-            // | Inline::Superscript { inlines }
-            // | Inline::Subscript { inlines }
-            // | Inline::Strikethrough { inlines }
 
-            // | Inline::Highlight { inlines } =>  (),
-
-            // Inline::Link { .. }  | Inline::Code { text }=> (),
-            // _ => prev_numbering = None,
+            // If there is anything between the ordered lists entries then
+            // restart the counting
+            _ => prev_numbering = None,
         }
     }
 }
@@ -1753,40 +1754,27 @@ mod tests {
     fn test_unordered_list_direct() {
         let mut text = "\n* List Level 1";
 
-        let r = unordered_list(&mut text);
+        let inline = unordered_list(&mut text).unwrap();
 
-        assert!(r.is_ok());
-
-        let inline = r.unwrap();
-
-        assert_eq!(inline, Inline::unordered_list(1));
+        assert_eq!(inline, Inline::unordered_list(1, "List Level 1"));
 
         let mut text = "\n*** List Level 3";
 
-        let r = unordered_list(&mut text);
+        let inline = unordered_list(&mut text).unwrap();
 
-        assert!(r.is_ok());
-
-        let inline = r.unwrap();
-
-        assert_eq!(inline, Inline::unordered_list(3));
+        assert_eq!(inline, Inline::unordered_list(3, "List Level 3"));
 
         let mut text = "\n****** List Level 6";
 
-        let r = unordered_list(&mut text);
+        let inline = unordered_list(&mut text).unwrap();
 
-        assert!(r.is_ok());
-
-        let inline = r.unwrap();
-
-        assert_eq!(inline, Inline::unordered_list(6));
+        assert_eq!(inline, Inline::unordered_list(6, "List Level 6"));
 
         // In tiddywiki there does not need to be a space between the asterisk and the text
         let mut text = "\n*list point";
-        let r = unordered_list(&mut text);
-        assert!(r.is_ok());
-        let inline = r.unwrap();
-        assert_eq!(inline, Inline::unordered_list(1));
+        let inline = unordered_list(&mut text).unwrap();
+
+        assert_eq!(inline, Inline::unordered_list(1, "list point"));
     }
 
     #[test]
@@ -1803,14 +1791,10 @@ mod tests {
 
         let expected = vec![
             Inline::plaintext("The following points:"),
-            Inline::unordered_list(1),
-            Inline::plaintext("The most important"),
-            Inline::unordered_list(1),
-            Inline::plaintext("Not so important"),
-            Inline::unordered_list(2),
-            Inline::plaintext("Why this is not important"),
-            Inline::unordered_list(1),
-            Inline::plaintext("No intervening spaces"),
+            Inline::unordered_list(1, "The most important"),
+            Inline::unordered_list(1, "Not so important"),
+            Inline::unordered_list(2, "Why this is not important"),
+            Inline::unordered_list(1, "No intervening spaces"),
         ];
 
         assert_eq!(v, expected);
@@ -1844,12 +1828,9 @@ mod tests {
 
         let expected = vec![
             Inline::plaintext("The following points:"),
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("The most important"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Not so important"),
-            Inline::ordered_list(2, "2.1"),
-            Inline::plaintext("Why this is not important"),
+            Inline::ordered_list(1, "1", "The most important"),
+            Inline::ordered_list(1, "2", "Not so important"),
+            Inline::ordered_list(2, "2.1", "Why this is not important"),
         ];
 
         assert_eq!(v, expected);
@@ -1863,21 +1844,16 @@ mod tests {
             "# second\n",
             "## subpoint1\n",
             "## subpoint2\n",
-            "# third\n",
+            "# third",
         );
         let v = parse_tiddler(&mut text).unwrap();
 
         let expected = vec![
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("first"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("second"),
-            Inline::ordered_list(2, "2.1"),
-            Inline::plaintext("subpoint1"),
-            Inline::ordered_list(2, "2.2"),
-            Inline::plaintext("subpoint2"),
-            Inline::ordered_list(1, "3"),
-            Inline::plaintext("third\n"),
+            Inline::ordered_list(1, "1", "first"),
+            Inline::ordered_list(1, "2", "second"),
+            Inline::ordered_list(2, "2.1", "subpoint1"),
+            Inline::ordered_list(2, "2.2", "subpoint2"),
+            Inline::ordered_list(1, "3", "third"),
         ];
 
         assert_eq!(v, expected);
@@ -1893,6 +1869,24 @@ mod tests {
             Inline::plaintext("A hash in bold "),
             Inline::bold("#"),
             Inline::plaintext(" - Some more text"),
+        ];
+
+        assert_eq!(v, expected);
+    }
+
+    #[test]
+    fn test_ordered_list_with_formatting() {
+        let mut input = concat!("\n", "# first ''point''\n", "# //second as italics//",);
+
+        let v = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![
+            Inline::ordered_list_with_inlines(
+                1,
+                "1",
+                vec![Inline::plaintext("first "), Inline::bold("point")],
+            ),
+            Inline::ordered_list_with_inlines(1, "2", vec![Inline::italics("second as italics")]),
         ];
 
         assert_eq!(v, expected);
@@ -2221,25 +2215,17 @@ mod tests {
     fn test_number_ordered_lists() {
         // Happy path - simple one level list
         let mut inlines = vec![
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point one\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point two\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point three\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point four"),
+            Inline::ordered_list(1, "", "Point one"),
+            Inline::ordered_list(1, "", "Point two"),
+            Inline::ordered_list(1, "", "Point three"),
+            Inline::ordered_list(1, "", "Point four"),
         ];
 
         let expected = vec![
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("Point one\n"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Point two\n"),
-            Inline::ordered_list(1, "3"),
-            Inline::plaintext("Point three\n"),
-            Inline::ordered_list(1, "4"),
-            Inline::plaintext("Point four"),
+            Inline::ordered_list(1, "1", "Point one"),
+            Inline::ordered_list(1, "2", "Point two"),
+            Inline::ordered_list(1, "3", "Point three"),
+            Inline::ordered_list(1, "4", "Point four"),
         ];
 
         number_ordered_lists(&mut inlines);
@@ -2248,57 +2234,57 @@ mod tests {
 
         // Happy path - different levels
         let mut inlines = vec![
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point one\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point two\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint1\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint2\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint3\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point four"),
-            Inline::bold("with emphasis"),
-            Inline::plaintext("\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Another subpoint1\n"),
-            Inline::ordered_list(3, ""),
-            Inline::plaintext("A minor point with a "),
-            Inline::link("link", ""),
-            Inline::plaintext("\n"),
-            Inline::ordered_list(3, ""),
-            Inline::plaintext("Level 3\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Another subpoint2\n"),
+            Inline::ordered_list(1, "", "Point one"),
+            Inline::ordered_list(1, "", "Point two"),
+            Inline::ordered_list(2, "", "Subpoint1"),
+            Inline::ordered_list(2, "", "Subpoint2"),
+            Inline::ordered_list(2, "", "Subpoint3"),
+            Inline::ordered_list_with_inlines(
+                1,
+                "",
+                vec![
+                    Inline::plaintext("Point four "),
+                    Inline::bold("with emphasis"),
+                ],
+            ),
+            Inline::ordered_list(2, "", "Another subpoint1"),
+            Inline::ordered_list_with_inlines(
+                3,
+                "",
+                vec![
+                    Inline::plaintext("A minor point with a "),
+                    Inline::link("link", ""),
+                ],
+            ),
+            Inline::ordered_list(3, "", "Level 3"),
+            Inline::ordered_list(2, "", "Another subpoint2"),
         ];
 
         let expected = vec![
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("Point one\n"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Point two\n"),
-            Inline::ordered_list(2, "2.1"),
-            Inline::plaintext("Subpoint1\n"),
-            Inline::ordered_list(2, "2.2"),
-            Inline::plaintext("Subpoint2\n"),
-            Inline::ordered_list(2, "2.3"),
-            Inline::plaintext("Subpoint3\n"),
-            Inline::ordered_list(1, "3"),
-            Inline::plaintext("Point four"),
-            Inline::bold("with emphasis"),
-            Inline::plaintext("\n"),
-            Inline::ordered_list(2, "3.1"),
-            Inline::plaintext("Another subpoint1\n"),
-            Inline::ordered_list(3, "3.1.1"),
-            Inline::plaintext("A minor point with a "),
-            Inline::link("link", ""),
-            Inline::plaintext("\n"),
-            Inline::ordered_list(3, "3.1.2"),
-            Inline::plaintext("Level 3\n"),
-            Inline::ordered_list(2, "3.2"),
-            Inline::plaintext("Another subpoint2\n"),
+            Inline::ordered_list(1, "1", "Point one"),
+            Inline::ordered_list(1, "2", "Point two"),
+            Inline::ordered_list(2, "2.1", "Subpoint1"),
+            Inline::ordered_list(2, "2.2", "Subpoint2"),
+            Inline::ordered_list(2, "2.3", "Subpoint3"),
+            Inline::ordered_list_with_inlines(
+                1,
+                "3",
+                vec![
+                    Inline::plaintext("Point four "),
+                    Inline::bold("with emphasis"),
+                ],
+            ),
+            Inline::ordered_list(2, "3.1", "Another subpoint1"),
+            Inline::ordered_list_with_inlines(
+                3,
+                "3.1.1",
+                vec![
+                    Inline::plaintext("A minor point with a "),
+                    Inline::link("link", ""),
+                ],
+            ),
+            Inline::ordered_list(3, "3.1.2", "Level 3"),
+            Inline::ordered_list(2, "3.2", "Another subpoint2"),
         ];
 
         number_ordered_lists(&mut inlines);
@@ -2306,49 +2292,31 @@ mod tests {
 
         // Non consecutive lists
         let mut inlines = vec![
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point one\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point two\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point three\n"),
+            Inline::ordered_list(1, "", "Point one"),
+            Inline::ordered_list(1, "", "Point two"),
+            Inline::ordered_list(1, "", "Point three"),
             Inline::plaintext("A break\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point one again\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point two again\n"),
+            Inline::ordered_list(1, "", "Point one again"),
+            Inline::ordered_list(1, "", "Point two again"),
             Inline::plaintext("A break\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point one yet again\n"),
-            Inline::ordered_list(1, ""),
-            Inline::plaintext("Point two yet again\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint\n"),
-            Inline::ordered_list(2, ""),
-            Inline::plaintext("Subpoint\n"),
+            Inline::ordered_list(1, "", "Point one yet again"),
+            Inline::ordered_list(1, "", "Point two yet again"),
+            Inline::ordered_list(2, "", "Subpoint"),
+            Inline::ordered_list(2, "", "Subpoint"),
         ];
 
         let expected = vec![
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("Point one\n"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Point two\n"),
-            Inline::ordered_list(1, "3"),
-            Inline::plaintext("Point three\n"),
+            Inline::ordered_list(1, "1", "Point one"),
+            Inline::ordered_list(1, "2", "Point two"),
+            Inline::ordered_list(1, "3", "Point three"),
             Inline::plaintext("A break\n"),
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("Point one again\n"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Point two again\n"),
+            Inline::ordered_list(1, "1", "Point one again"),
+            Inline::ordered_list(1, "2", "Point two again"),
             Inline::plaintext("A break\n"),
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("Point one yet again\n"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Point two yet again\n"),
-            Inline::ordered_list(2, "2.1"),
-            Inline::plaintext("Subpoint\n"),
-            Inline::ordered_list(2, "2.2"),
-            Inline::plaintext("Subpoint\n"),
+            Inline::ordered_list(1, "1", "Point one yet again"),
+            Inline::ordered_list(1, "2", "Point two yet again"),
+            Inline::ordered_list(2, "2.1", "Subpoint"),
+            Inline::ordered_list(2, "2.2", "Subpoint"),
         ];
 
         number_ordered_lists(&mut inlines);

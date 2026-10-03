@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use clap::Parser;
 

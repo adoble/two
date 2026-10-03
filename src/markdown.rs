@@ -88,10 +88,23 @@ impl Markdown {
                 url,
                 trailing_punctuation.clone().unwrap_or(String::new())
             ),
-            Inline::OrderedList { level, numbering } => {
-                format!("{}{}. ", "\t".repeat(*level - 1), numbering[*level - 1])
+            Inline::OrderedList {
+                level,
+                numbering,
+                inlines,
+            } => {
+                format!(
+                    "{}{}. {}\n",
+                    "\t".repeat(*level - 1),
+                    numbering[*level - 1],
+                    self.convert_inlines(inlines)
+                )
             }
-            Inline::UnorderedList { level } => format!("{}- ", "\t".repeat(level - 1)),
+            Inline::UnorderedList { level, inlines } => format!(
+                "{}- {}\n",
+                "\t".repeat(level - 1),
+                self.convert_inlines(inlines)
+            ),
             Inline::Transclusion { tiddler } => format!("![[{tiddler}]]"),
             Inline::Table { rows } => Self::format_table(rows),
             Inline::TableCellDelimiter => String::new(),
@@ -312,24 +325,22 @@ mod tests {
     fn test_ordered_list() {
         let inlines = vec![
             Inline::plaintext("The following points:\n"),
-            Inline::ordered_list(1, "1"),
-            Inline::plaintext("The most important\n"),
-            Inline::ordered_list(1, "2"),
-            Inline::plaintext("Not so important\n"),
-            Inline::ordered_list(2, "2.1"),
-            Inline::plaintext("Why this is not important"),
+            Inline::ordered_list(1, "1", "The most important"),
+            Inline::ordered_list(1, "2", "Not so important"),
+            Inline::ordered_list(2, "2.1", "Why this is not important"),
         ];
 
         let expected = concat!(
             "The following points:\n",
             "1. The most important\n",
             "2. Not so important\n",
-            "\t1. Why this is not important"
+            "\t1. Why this is not important\n"
         );
 
         let markdown = Markdown::from_inlines(&inlines);
 
         let contents = markdown.to_string();
+        println!("Markdown:{:?}", contents);
         assert_eq!(contents, expected);
     }
 
@@ -337,19 +348,16 @@ mod tests {
     fn test_unordered_list() {
         let inlines = vec![
             Inline::plaintext("The following points:\n"),
-            Inline::unordered_list(1),
-            Inline::plaintext("The most important\n"),
-            Inline::unordered_list(1),
-            Inline::plaintext("Not so important\n"),
-            Inline::unordered_list(2),
-            Inline::plaintext("Why this is not important"),
+            Inline::unordered_list(1, "The most important"),
+            Inline::unordered_list(1, "Not so important"),
+            Inline::unordered_list(2, "Why this is not important"),
         ];
 
         let expected = concat!(
             "The following points:\n",
             "- The most important\n",
             "- Not so important\n",
-            "\t- Why this is not important"
+            "\t- Why this is not important\n"
         );
 
         let markdown = Markdown::from_inlines(&inlines);

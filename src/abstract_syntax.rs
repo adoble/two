@@ -61,9 +61,11 @@ pub enum Inline {
     OrderedList {
         level: usize,
         numbering: Vec<usize>,
+        inlines: Vec<Inline>,
     },
     UnorderedList {
         level: usize,
+        inlines: Vec<Inline>,
     },
     Transclusion {
         tiddler: String,
@@ -264,18 +266,51 @@ impl Inline {
         }
     }
 
-    pub fn ordered_list(level: usize, numbering: &str) -> Inline {
-        let numbering: Vec<usize> = if !numbering.is_empty() {
+    pub fn ordered_list(level: usize, numbering: &str, text: &str) -> Inline {
+        let numbering = Inline::numbering_vector(numbering);
+
+        let inlines = if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![Inline::plaintext(text)]
+        };
+
+        Inline::OrderedList {
+            level,
+            numbering,
+            inlines,
+        }
+    }
+
+    fn numbering_vector(numbering: &str) -> Vec<usize> {
+        if !numbering.is_empty() {
             numbering.split('.').map(|n| n.parse().unwrap()).collect()
         } else {
             Vec::new()
-        };
-
-        Inline::OrderedList { level, numbering }
+        }
     }
 
-    pub fn unordered_list(level: usize) -> Inline {
-        Inline::UnorderedList { level }
+    pub fn ordered_list_with_inlines(
+        level: usize,
+        numbering: &str,
+        inlines: Vec<Inline>,
+    ) -> Inline {
+        let numbering = Inline::numbering_vector(numbering);
+
+        Inline::OrderedList {
+            level,
+            numbering,
+            inlines,
+        }
+    }
+
+    pub fn unordered_list(level: usize, text: &str) -> Inline {
+        let inlines = vec![Inline::plaintext(text)];
+        Inline::UnorderedList { level, inlines }
+    }
+
+    pub fn unordered_list_with_inlines(level: usize, inlines: Vec<Inline>) -> Inline {
+        Inline::UnorderedList { level, inlines }
     }
 
     pub fn transclusion(tiddler: &str) -> Inline {
@@ -381,39 +416,71 @@ mod tests {
 
     #[test]
     fn test_ordered_list_helper() {
-        let inline = Inline::ordered_list(1, "");
+        let inline = Inline::ordered_list(1, "", "text");
         assert_eq!(
             inline,
             Inline::OrderedList {
                 level: 1,
-                numbering: vec![]
+                numbering: vec![],
+                inlines: vec![Inline::plaintext("text")]
             }
         );
 
-        let inline = Inline::ordered_list(1, "2");
+        let inline = Inline::ordered_list(1, "2", "text");
         assert_eq!(
             inline,
             Inline::OrderedList {
                 level: 1,
-                numbering: vec![2]
+                numbering: vec![2],
+                inlines: vec![Inline::plaintext("text")]
             }
         );
 
-        let inline = Inline::ordered_list(2, "2.2");
+        let inline = Inline::ordered_list(2, "2.2", "text");
         assert_eq!(
             inline,
             Inline::OrderedList {
                 level: 2,
-                numbering: vec![2, 2]
+                numbering: vec![2, 2],
+                inlines: vec![Inline::plaintext("text")]
             }
         );
 
-        let inline = Inline::ordered_list(3, "1.2.3");
+        let inline = Inline::ordered_list(3, "1.2.3", "text");
         assert_eq!(
             inline,
             Inline::OrderedList {
                 level: 3,
-                numbering: vec![1, 2, 3]
+                numbering: vec![1, 2, 3],
+                inlines: vec![Inline::plaintext("text")]
+            }
+        );
+    }
+
+    #[test]
+    fn test_ordered_list_helpers_with_inlines() {
+        let inlines = vec![
+            Inline::plaintext("text "),
+            Inline::bold("bold"),
+            Inline::plaintext(" "),
+            Inline::italics("italics"),
+        ];
+        let level = 2;
+        let numbering = "2.1";
+
+        let inline = Inline::ordered_list_with_inlines(level, numbering, inlines);
+
+        assert_eq!(
+            inline,
+            Inline::OrderedList {
+                level,
+                numbering: vec![2, 1],
+                inlines: vec![
+                    Inline::plaintext("text "),
+                    Inline::bold("bold"),
+                    Inline::plaintext(" "),
+                    Inline::italics("italics"),
+                ],
             }
         );
     }
