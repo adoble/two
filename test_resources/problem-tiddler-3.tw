@@ -1,0 +1,30 @@
+
+!! Learning Rust
+*[[Rust Concept Mapping]]. What concepts are used in Rust. 
+
+* See [ext[this|https://www.embeddedrelated.com/showarticle/1432.php]] for a list of learning resources (with a focus on ''embedded'').
+
+!! Becoming better with Rust 
+
+* The book [ext[Effective Rust|https://effective-rust.com/preface.html]] provides more depth on how to use concepts that exist in Rust within a development context. 
+
+* The site [ext[Blessed.rs|https://blessed.rs/crates]] provide a list of the most important crates. 
+
+!! Keeping up with developments in Rust 
+
+<<<
+Source:  https://briankung.dev/2023/07/16/rust-notes/#keeping-up-with-rust-news
+<<<
+
+
+*    [ext[Weekly Newsletter|https://this-week-in-rust.org/ ]].Currently delivered to my mail,
+
+*    [ext[(Sub)Reddit|https://old.reddit.com/r/rust/]]
+ *[ext[Rust Language Community|https://users.rust-lang.org/]]
+  *  [ext[Lobste.rs| https://lobste.rs/t/rust]]. Atechnical community where a lot of good discussion happens. Also less active than Reddit, but generally the quality of discussion is better.
+ * [ext[Y-Combinator|https://news.ycombinator.com/ ]]. A moderated space.
+ * `#rustlang `on //Mastodon//. 
+
+!! Searching for Rust Resources and Tutorials
+
+* Use [ext[Rust Indexed|https://rust-indexed.com/]]

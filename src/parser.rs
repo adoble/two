@@ -1946,26 +1946,6 @@ mod tests {
         assert_eq!(v.vertical, CellVerticalAlignment::Bottom);
     }
 
-    // #[test]
-    // fn test_camel_case_link_start() {
-    //     let mut input = "This has no camel case link.";
-
-    //     let start = camel_case_link_start(input);
-    //     assert_eq!(start, None);
-
-    //     let mut input = "This has One CamelCase link.";
-    //     let start = camel_case_link_start(input);
-    //     assert_eq!(start, Some(13));
-
-    //     let mut input = "NO CAMELCASE";
-    //     let start = camel_case_link_start(input);
-    //     assert_eq!(start, None);
-
-    //     let mut input = "No CAMel case";
-    //     let start = camel_case_link_start(input);
-    //     assert_eq!(start, None);
-    // }
-
     #[test]
     fn test_plain_text() {
         let mut text = " Contents42 ";
@@ -2362,5 +2342,32 @@ mod tests {
         let mut input = include_str!("../test_resources/problem-tiddler-2.tw");
 
         let _inlines = parse_tiddler(&mut input).unwrap();
+    }
+
+    #[test]
+    fn test_another_problem() {
+        let mut input = "\n * `#rustlang `on //Mastodon//. ";
+
+        let inlines = parse_tiddler(&mut input).unwrap();
+
+        let expected = vec![Inline::unordered_list_with_inlines(
+            1,
+            vec![
+                Inline::code("#rustlang "),
+                Inline::plaintext("on "),
+                Inline::italics("Mastodon"),
+                Inline::plaintext(". "),
+            ],
+        )];
+
+        assert_eq!(inlines, expected);
+    }
+
+    #[test]
+    fn test_problem_tiddler_3() {
+        let mut input = include_str!("../test_resources/problem-tiddler-3.tw");
+
+        let r = parse_tiddler(&mut input);
+        assert!(r.is_ok());
     }
 }
