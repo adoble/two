@@ -126,7 +126,7 @@ fn create_tiddler_file(tiddler: &Tiddler, out_dir: &Path) -> Result<()> {
 
             file.write_all(markdown.as_bytes())?;
         }
-        Some(mime @ ("image/jpeg" | "image/png")) => {
+        Some(mime @ ("image/jpeg" | "image/png" | "image/gif")) => {
             info!("Copying {}: {}", mime, tiddler.title);
 
             let image_bytes = convert_image(&tiddler.text)?;
