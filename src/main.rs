@@ -33,10 +33,11 @@ struct Cli {
     /// The path where the obsidian files are  generated.
     #[arg(short = 'o', long = "output")]
     out_path: std::path::PathBuf,
-    //     /// Name of the tiddle to be converted. If not speicifed all of the tiddlers
-    //     /// are converted.
-    //     #[arg(short = 't', long = "tiddler")]
-    //     tiddler_name: Option<String>,
+
+    /// Name of the tiddler to be converted. If not speicifed all of the tiddlers
+    /// are converted.
+    #[arg(short = 't', long = "tiddler")]
+    tiddler_name: Option<String>,
 }
 
 fn main() {
@@ -49,8 +50,6 @@ fn main() {
     //let mut tw_file = File::open("./tiddlywiki/empty.html").unwrap();
     //let mut tw_file = File::open("/home/andrew/Downloads/SoftwareTools.html").unwrap();
 
-    debug!("Input file: {}", args.in_path.display());
-
     let mut tw_file = File::open(&args.in_path).unwrap();
     let mut tw_string = String::new();
     tw_file.read_to_string(&mut tw_string).unwrap();
@@ -62,6 +61,11 @@ fn main() {
     let filtered_tiddlers: Vec<&Tiddler> = tiddlers
         .iter()
         .filter(|t| !t.title.starts_with("$:/"))
+        .filter(|t| {
+            args.tiddler_name
+                .as_deref()
+                .map_or(true, |name| t.title == name)
+        })
         .collect();
 
     // Create the output directory
@@ -95,10 +99,6 @@ fn extract_tiddler_json(html: &str) -> Option<&str> {
 }
 
 fn create_tiddler_file(tiddler: &Tiddler, out_dir: &Path) -> Result<()> {
-    if tiddler.title == "Markup Reference" {
-        println!("Markup reference");
-    }
-
     let converted_tiddler_title = naming::map_name(&tiddler.title);
 
     match tiddler.tiddler_type.as_deref() {
@@ -107,6 +107,7 @@ fn create_tiddler_file(tiddler: &Tiddler, out_dir: &Path) -> Result<()> {
 
             let mut input = tiddler.text.as_str();
             let ast = parser::parse(&mut input)?;
+
             let markdown = Markdown::from_inlines(&ast).to_string();
 
             let path = out_dir.join(format!("{}.md", converted_tiddler_title));
