@@ -340,7 +340,6 @@ mod tests {
         let markdown = Markdown::from_inlines(&inlines);
 
         let contents = markdown.to_string();
-        println!("Markdown:{:?}", contents);
         assert_eq!(contents, expected);
     }
 
