@@ -5,14 +5,12 @@ use winnow::{
     ModalResult, Parser,
     ascii::{alphanumeric0, digit1, line_ending, space0, space1, till_line_ending},
     combinator::{alt, eof, fail, opt, peek, preceded, repeat, repeat_till, separated, seq},
-    error::{ContextError, ErrMode},
+    error::{ContextError, ErrMode, StrContext},
     stream::AsChar,
     token::{any, literal, one_of, take, take_till, take_until, take_while},
 };
 
 use url::Url;
-
-use anyhow::Context;
 
 #[allow(unused_imports)]
 use log::{debug, error, info};
@@ -284,8 +282,9 @@ fn plaintext_old(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn plaintext(input: &mut &str) -> ModalResult<Inline> {
-    let (chars, _): (Vec<char>, _) =
-        repeat_till(0.., any, peek(alt((inline, end_of_text)))).parse_next(input)?;
+    let (chars, _): (Vec<char>, _) = repeat_till(0.., any, peek(alt((inline, end_of_text))))
+        .context(StrContext::Label("parsing plaintext"))
+        .parse_next(input)?;
 
     let s: String = chars.into_iter().collect();
 
@@ -574,8 +573,14 @@ fn image(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn link(input: &mut &str) -> ModalResult<Inline> {
-    let link =
-        alt((camel_case_link, external_link, embedded_url, simple_link)).parse_next(input)?;
+    let link = alt((
+        camel_case_link.context(StrContext::Label("parsing camel_case_link")),
+        external_link.context(StrContext::Label("parsing external_link")),
+        embedded_url.context(StrContext::Label("parsing url")),
+        simple_link.context(StrContext::Label("parsing simple_link")),
+    ))
+    .context(StrContext::Label("parsing link"))
+    .parse_next(input)?;
 
     Ok(link)
 }
@@ -588,17 +593,23 @@ fn simple_link(input: &mut &str) -> ModalResult<Inline> {
         take_until(1.., "]]"),
         take(2usize)
     )
+    .context(StrContext::Label("parsing simple link"))
     .parse_next(input)?;
 
     // Manually extracting the link and its description as the declarative
-    // approach gave problems in parsing many links
+    // approach gave problems in parsing some links.
+    // Note some links can havre two vertical bars before the discription and this
+    // is accepted by TiddlyWiki. Need to also cater for this case
     let parts: Vec<&str> = link_statement.split('|').collect();
 
     let (mut link, display_text) = match parts.len() {
         1 => (parts[0].to_string(), None),
         2 => (parts[1].to_string(), Some(parts[0].to_string())),
+        3 => (parts[2].to_string(), Some(parts[0].to_string())),
         _ => {
-            return Err(ErrMode::Cut(ContextError::new()));
+            let mut context_error = ContextError::new();
+            context_error.push(StrContext::Label("Link is misformed"));
+            return Err(ErrMode::Cut(context_error));
         }
     };
 
@@ -617,8 +628,9 @@ fn simple_link(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn external_link(input: &mut &str) -> ModalResult<Inline> {
-    let (_, link_statement, _) =
-        seq!("[ext[", take_until(1.., "]]"), take(2usize)).parse_next(input)?;
+    let (_, link_statement, _) = seq!("[ext[", take_until(1.., "]]"), take(2usize))
+        .context(StrContext::Label("parsing external link"))
+        .parse_next(input)?;
 
     // Manually extracting the link and its description as the declarative
     // approach gave problems in parsing many links
@@ -787,7 +799,12 @@ fn formatting(input: &mut &str) -> ModalResult<Inline> {
 }
 
 fn list(input: &mut &str) -> ModalResult<Inline> {
-    alt((unordered_list, ordered_list)).parse_next(input)
+    alt((
+        unordered_list.context(StrContext::Label("parsing unordered_list")),
+        ordered_list.context(StrContext::Label("parsing ordered_list")),
+    ))
+    .context(StrContext::Label("parsing list"))
+    .parse_next(input)
 }
 
 // Only adding the intermediate parser so that the alt in the inline
@@ -816,17 +833,21 @@ fn inline(input: &mut &str) -> ModalResult<Inline> {
         structure,
         table,
     ))
+    .context(StrContext::Label("parsing inline"))
     .parse_next(input)
 }
 
 fn wiki_text(input: &mut &str) -> ModalResult<Inline> {
-    alt((inline, plaintext)).parse_next(input)
+    alt((inline, plaintext))
+        .context(StrContext::Label("parsing wiki text"))
+        .parse_next(input)
 }
 
 fn parse_tiddler(input: &mut &str) -> ModalResult<Vec<Inline>> {
     //let mut inlines = repeat_till(0.., inline, eof)
     let mut inlines = repeat_till(0.., wiki_text, eof)
         .map(|v: (Vec<Inline>, _)| v)
+        .context(StrContext::Label("parsing tiddler"))
         .parse_next(input)?;
 
     number_ordered_lists(&mut inlines.0);
@@ -842,9 +863,8 @@ pub fn parse(input: &str) -> anyhow::Result<Vec<Inline>> {
     let tiddler = prepend_new_line(input);
     let mut input: &str = tiddler.as_str();
 
-    parse_tiddler(&mut input)
-        .map_err(|e| anyhow::anyhow!("{e}"))
-        .with_context(|| "failed to parse tiddler")
+    parse_tiddler(&mut input).map_err(|e| anyhow::anyhow!("{e}"))
+    //.with_context(|| "failed to parse tiddler")
 }
 
 /// To distinguish some markers (such  as lists) these should be on a new line.
@@ -2367,7 +2387,10 @@ mod tests {
     fn test_problem_tiddler_3() {
         let mut input = include_str!("../test_resources/problem-tiddler-3.tw");
 
-        let r = parse_tiddler(&mut input);
+        let r = parse(&mut input);
         assert!(r.is_ok());
+
+        let inlines = r.unwrap();
+        assert!(inlines.len() > 0);
     }
 }
