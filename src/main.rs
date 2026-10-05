@@ -47,9 +47,6 @@ fn main() {
 
     let args = Cli::parse();
 
-    //let mut tw_file = File::open("./tiddlywiki/empty.html").unwrap();
-    //let mut tw_file = File::open("/home/andrew/Downloads/SoftwareTools.html").unwrap();
-
     let mut tw_file = File::open(&args.in_path).unwrap();
     let mut tw_string = String::new();
     tw_file.read_to_string(&mut tw_string).unwrap();
@@ -108,7 +105,11 @@ fn create_tiddler_file(tiddler: &Tiddler, out_dir: &Path) -> Result<()> {
             let mut input = tiddler.text.as_str();
             let ast = parser::parse(&mut input)?;
 
-            let markdown = Markdown::from_inlines(&ast).to_string();
+            let mut markdown = Markdown::from_inlines(&ast);
+            markdown
+                .set_tags(tiddler.tags())
+                .map_err(anyhow::Error::msg)?;
+            let markdown = markdown.to_string();
 
             let path = out_dir.join(format!("{}.md", converted_tiddler_title));
             let mut file = File::create(path)?;
@@ -119,23 +120,24 @@ fn create_tiddler_file(tiddler: &Tiddler, out_dir: &Path) -> Result<()> {
         Some("text/x-markdown") => {
             info!("Copying markdown : {}", tiddler.title);
 
-            let markdown = tiddler.text.as_str();
+            let mut markdown = Markdown::from_str(&tiddler.text);
+            markdown
+                .set_tags(tiddler.tags())
+                .map_err(anyhow::Error::msg)?;
+            let markdown = markdown.to_string();
+
+            // let markdown = tiddler.text.as_str();
 
             let path = out_dir.join(format!("{}.md", converted_tiddler_title));
             let mut file = File::create(path)?;
 
-            file.write_all(markdown.as_bytes())?;
+            file.write_all(&markdown.as_bytes())?;
         }
         Some(mime @ ("image/jpeg" | "image/png" | "image/gif")) => {
             info!("Copying {}: {}", mime, tiddler.title);
 
             let image_bytes = convert_image(&tiddler.text)?;
 
-            // let (_, extension) = mime
-            //     .split_once('/')
-            //     .ok_or_else(|| anyhow::anyhow!("malformed MIMI type: {mime}"))?;
-
-            //let path = out_dir.join(format!("{}.{}", converted_tiddler_title, extension));
             let path = out_dir.join(converted_tiddler_title);
             let mut file = File::create(path)?;
 

@@ -1,8 +1,9 @@
-use std::fmt::Display;
-
 /// Obsidian markdown generation
 ///
 ///
+///
+use std::fmt::Display;
+
 use crate::abstract_syntax::{
     CellAlignment, CellHorizontalAlignment,
     Inline::{self},
@@ -19,12 +20,46 @@ impl Markdown {
         Self(String::new())
     }
 
+    pub fn from_str(s: &str) -> Self {
+        Markdown(s.to_string())
+    }
+
     pub fn from_inlines(inlines: &Vec<Inline>) -> Self {
         let mut markdown = Markdown::new();
         for inline in inlines {
             markdown.append(inline);
         }
         markdown
+    }
+
+    pub fn set_tags(&mut self, tags: Vec<String>) -> Result<(), String> {
+        let mut tags_markdown = String::new();
+        for tag in tags {
+            // Check that tag contains at least one non-numerical character as required by
+            // Obsidian.
+            tag.chars()
+                .any(|c| !c.is_numeric())
+                .then_some(()) // Dont't need to use unstable feature of ok_or() on boo
+                .ok_or(format!(
+                    "Tag {} should contain at least one non-numerical character",
+                    tag
+                ))?;
+
+            // Convert tags to camel case if they contain spaces
+            let converted_tag = to_camel_case(&tag);
+            if !tags_markdown.is_empty() {
+                tags_markdown.push(' ');
+            }
+            tags_markdown.push('#');
+            tags_markdown.push_str(&converted_tag);
+        }
+
+        if !tags_markdown.is_empty() {
+            tags_markdown.push_str("\n\n");
+            self.0.insert_str(0, &tags_markdown);
+        }
+
+        Ok(())
     }
 
     fn append(&mut self, inline: &Inline) {
@@ -223,6 +258,27 @@ impl Markdown {
     }
 }
 
+fn to_camel_case(value: &str) -> String {
+    if !value.chars().any(char::is_whitespace) {
+        return value.to_string();
+    }
+
+    let mut words = value.split_whitespace();
+    let Some(first_word) = words.next() else {
+        return value.to_string();
+    };
+
+    let mut camel_case = first_word.to_lowercase();
+    for word in words {
+        let mut chars = word.chars();
+        if let Some(first_char) = chars.next() {
+            camel_case.extend(first_char.to_uppercase());
+            camel_case.push_str(&chars.as_str().to_lowercase());
+        }
+    }
+    camel_case
+}
+
 impl Display for Markdown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -234,6 +290,23 @@ mod tests {
     use super::*;
     use crate::abstract_syntax::TableCell;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_to_camel_case() {
+        assert_eq!(to_camel_case("multi word tag"), "multiWordTag");
+        assert_eq!(to_camel_case("AlreadyCamelCase"), "AlreadyCamelCase");
+        assert_eq!(to_camel_case("no-spaces"), "no-spaces");
+        assert_eq!(to_camel_case("  multiple   spaces "), "multipleSpaces");
+    }
+
+    #[test]
+    fn test_set_tags() {
+        let mut markdown = Markdown("Content".to_string());
+        markdown
+            .set_tags(vec!["plain".to_string(), "multi word".to_string()])
+            .unwrap();
+        assert_eq!(markdown.to_string(), "#plain #multiWord\n\nContent");
+    }
 
     #[test]
     fn test_from_formatting_inline() {
