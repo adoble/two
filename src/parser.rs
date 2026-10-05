@@ -778,7 +778,7 @@ fn transclusion(input: &mut &str) -> ModalResult<Inline> {
 
 // This recursively parses the nested formatting
 pub fn parse_formatting(input: &mut &str) -> ModalResult<Vec<Inline>> {
-    let (inlines, _) = repeat_till(0.., alt((code, formatting, link, plaintext)), eof)
+    let (inlines, _) = repeat_till(0.., alt((code, formatting, link, image, plaintext)), eof)
         .map(|v: (Vec<Inline>, _)| v)
         .parse_next(input)?;
 
@@ -1283,7 +1283,7 @@ mod tests {
 
     #[test]
     fn test_code_block_direct() {
-        let expected_code = concat!("    let flag = x <= 5;\n", "    println!(\"{}\", flag);\n",);
+        let expected_code = concat!("    let flag = x <= 5;\n", "    debug!(\"{}\", flag);\n",);
 
         let mut text = String::from("```rust\n");
         text.push_str(expected_code);
@@ -2386,6 +2386,19 @@ mod tests {
     #[test]
     fn test_problem_tiddler_3() {
         let mut input = include_str!("../test_resources/problem-tiddler-3.tw");
+
+        let r = parse(&mut input);
+        assert!(r.is_ok());
+
+        let inlines = r.unwrap();
+        assert!(inlines.len() > 0);
+    }
+
+    #[test]
+    fn test_image_problem() {
+        // let mut input = "*[img width=20 [rust.svg]]  [[Rust]]";
+        // let mut input = "*[img width=20 [rust.svg]]";
+        let mut input = "* [img width=20 [my picture.jpg]]";
 
         let r = parse(&mut input);
         assert!(r.is_ok());
